@@ -1,0 +1,25 @@
+# Render Blueprint: one web service running the Arcana server (game + teacher portal + API).
+services:
+  - type: web
+    name: arcana-ai
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server/server.py
+    healthCheckPath: /api/status
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: ARCANA_HOSTED
+        value: "1"
+      - key: ARCANA_MAX_GAMES_PER_DAY
+        value: "5"
+      # Secrets: paste these in the Render dashboard (they are not stored in the repo).
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false

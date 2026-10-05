@@ -1,0 +1,21 @@
+# Photosynthesis
+
+Photosynthesis is the process by which plants, algae and some bacteria convert light energy into chemical energy stored in glucose. It takes place mainly in the leaves of plants, inside organelles called chloroplasts. Chloroplasts contain a green pigment called chlorophyll, which absorbs red and blue light and reflects green light. This is why most leaves look green.
+
+The overall equation for photosynthesis is: six molecules of carbon dioxide plus six molecules of water, in the presence of light, produce one molecule of glucose and six molecules of oxygen. Plants take in carbon dioxide from the air through tiny pores called stomata, and absorb water from the soil through their roots.
+
+# The light-dependent reactions
+
+The light-dependent reactions occur in the thylakoid membranes of the chloroplast. Thylakoids are stacked into structures called grana. When chlorophyll absorbs light, electrons gain energy and move along an electron transport chain. This energy is used to make ATP and NADPH, two molecules that carry energy to the next stage.
+
+During these reactions, water molecules are split in a process called photolysis. Splitting water releases electrons, protons and oxygen gas. The oxygen is released into the atmosphere as a by-product, and it is the oxygen that animals and humans breathe.
+
+# The Calvin cycle
+
+The Calvin cycle takes place in the stroma, the fluid surrounding the thylakoids. It is also called the light-independent reactions because it does not use light directly. Instead it uses the ATP and NADPH produced earlier in the light-dependent reactions.
+
+In the first stage, carbon fixation, the enzyme RuBisCO attaches carbon dioxide to a five-carbon molecule called RuBP. The resulting unstable six-carbon compound splits into two molecules of 3-PGA. ATP and NADPH then convert 3-PGA into G3P, a three-carbon sugar. Some G3P leaves the cycle to build glucose, and the rest is used to regenerate RuBP so the cycle can continue. Six turns of the cycle are needed to produce one molecule of glucose.
+
+# Factors affecting photosynthesis
+
+The rate of photosynthesis depends on light intensity, carbon dioxide concentration and temperature. As light intensity rises, the rate increases until another factor becomes limiting. Very high temperatures denature enzymes such as RuBisCO and slow the process. Plants store surplus glucose as starch, and use some of it for respiration and for building cellulose in cell walls.

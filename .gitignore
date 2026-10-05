@@ -1,0 +1,18 @@
+# Only the Arcana project is published. Everything else in this folder stays private.
+/*
+!/arcana/
+!/server/
+!/samples/
+!/README.md
+!/render.yaml
+!/Dockerfile
+!/requirements.txt
+!/.env.example
+!/.gitignore
+!/.dockerignore
+!/ARCANA_BLUEPRINT.md
+# never published
+.env
+data/
+__pycache__/
+*.pyc

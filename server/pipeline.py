@@ -11,6 +11,7 @@ import uuid
 
 import ingest
 import llm
+import retrieval
 import mockgen
 
 import config
@@ -171,7 +172,7 @@ def _ai(job: Job, text: str):
               "- final_boss_name: the villain of the final exam. summary: 2 sentences.")
     plan = clean_plan(llm.call_json(SYS, prompt, ANALYZE_SCHEMA, doc=doc_block(text), max_tokens=12000, tally=tally, log=job.log))
     job.total = len(plan["chapters"])
-    job.script = {"schemaVersion": 1, "projectId": job.id, "title": plan["title"], "audience": {"level": plan["level"], "modes": ["student", "teacher"]},
+    job.script = {"schemaVersion": 1, "projectId": job.id, "title": plan["title"], "audience": {"level": plan["level"], "modes": ["student"]},
                   "summary": plan["summary"], "chapters": [], "finalBoss": final_boss(plan),
                   "source": {"filename": job.filename, "words": len(text.split()), "mode": "ai", "model": llm.label()}}
     job.log(f"Plan: {job.total} chapters, {len(plan['concepts'])} concepts")
@@ -197,12 +198,19 @@ def _ai(job: Job, text: str):
                     job.log(f"Research skipped for '{c['name']}': {e}")
         notes = "\n\n".join(blocks)
         job.log("Web research added" if notes else "No web research available; using your material only")
-    doc = doc_block(text, notes)
+    index = retrieval.Index(text)
+    byid = {c['id']: c for c in plan['concepts']}
+
+    def doc_for(i):
+        ch = plan['chapters'][i]
+        cons = [byid[c] for c in ch['concept_ids'] if c in byid]
+        query = ch['title'] + ' ' + ch['goal'] + ' ' + ' '.join(c['name'] + ' ' + c['summary'] for c in cons)
+        return doc_block(index.context(query, 1800), notes)
 
     def build(i):
         for attempt in (1, 2):
             try:
-                return gen_chapter(job, plan, i, doc)
+                return gen_chapter(job, plan, i, doc_for(i), index)
             except llm.LLMError as e:
                 if attempt == 2 or "rejected" in str(e) or "declined" in str(e):
                     raise
@@ -243,7 +251,7 @@ def final_boss(plan):
             "count": 25, "passMarkRatio": 0.7, "extraQuestions": []}
 
 
-def gen_chapter(job, plan, i, doc):
+def gen_chapter(job, plan, i, doc, index=None):
     ch, byid = plan["chapters"][i], {c["id"]: c for c in plan["concepts"]}
     cons = [byid[c] for c in ch["concept_ids"] if c in byid]
     listing = "\n".join(f"- {c['id']} {c['name']}: {c['summary']}" for c in cons)
@@ -263,6 +271,8 @@ def gen_chapter(job, plan, i, doc):
     gen = llm.call_json(SYS, lessons, LESSON_SCHEMA, doc=doc, max_tokens=8000, tally=job.usage, log=job.log)
     gen.update(llm.call_json(SYS, qrules, QUESTION_SET, doc=doc, max_tokens=12000, tally=job.usage, log=job.log))
     gen = verify(job, gen, doc, i)
+    if index is not None:
+        gen = ground(job, gen, index, i)
     return assemble_chapter(i, len(plan["chapters"]), ch, cons, gen, plan["level"])
 
 
@@ -293,13 +303,30 @@ def verify(job, gen, doc, i):
     return gen
 
 
+def ground(job, gen, index, i):
+    """Drop questions the uploaded material does not support (retrieval check), keeping enough to play."""
+    def support(q):
+        return index.support(q["prompt"] + " " + q["options"][q["correct_index"]] + " " + q.get("explanation", ""))
+    groups = [[o["question"] for o in gen["obstacles"]]] + [gen[k] for k in ("match", "arcade", "test", "spare")]
+    total = sum(len(g) for g in groups)
+    weak = {id(q) for g in groups for q in g if support(q) < 0.3}
+    if total - len(weak) < 8:
+        job.log(f"Chapter {i + 1}: grounding check kept all {total} (too few would remain)")
+        return gen
+    gen["obstacles"] = [o for o in gen["obstacles"] if id(o["question"]) not in weak]
+    for k in ("match", "arcade", "test", "spare"):
+        gen[k] = [q for q in gen[k] if id(q) not in weak]
+    job.log(f"Chapter {i + 1}: grounding check removed {len(weak)} questions not backed by your material")
+    return gen
+
+
 # ----------------------------------------------------------------------------- offline path
 def _offline(job: Job, text: str):
     job.set("analyze", 20, "Analysing the text (offline mode)")
     plan, gens = mockgen.build(text, job.filename)
     plan = clean_plan(plan)
     job.total = len(plan["chapters"])
-    job.script = {"schemaVersion": 1, "projectId": job.id, "title": plan["title"], "audience": {"level": "general", "modes": ["student", "teacher"]},
+    job.script = {"schemaVersion": 1, "projectId": job.id, "title": plan["title"], "audience": {"level": "general", "modes": ["student"]},
                   "summary": plan["summary"], "chapters": [], "finalBoss": final_boss(plan),
                   "source": {"filename": job.filename, "words": len(text.split()), "mode": "offline"}}
     job.log("Offline mode: no API key, so questions are simple fill-in-the-blank. Add a key for AI-written lessons.")

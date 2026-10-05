@@ -19,15 +19,20 @@ const tone = (m) => (m == null ? "" : m >= 0.7 ? "" : m >= 0.45 ? "mid" : "bad")
 function authView(msg = "") {
   let mode = "login", gender = "m";
   const draw = () => {
-    app.innerHTML = `<div class="card auth"><h1>Your personal ARCANA</h1><p class="muted">Upload your own notes. A game is built just for you, and it learns how you study: it changes its difficulty, hints and practice to fit you, and draws a roadmap of what to learn next.</p>
+    if (!$("#bg")) { app.innerHTML = `<div class="landing"><canvas id="bg"></canvas><section class="intro"><div class="logoline"><span>ARCANA</span><b>AI</b></div><h2 class="tag">Turn your notes into <em id="rot">a game</em></h2>
+      <p class="muted">Upload your own study material. ARCANA builds a playable adventure from it, learns how you study, and draws a roadmap of what to learn next.</p>
+      <div class="steps"><div><i>1</i><b>Upload</b><span>PDF, notes or text</span></div><div><i>2</i><b>Play</b><span>fight, solve, explore</span></div><div><i>3</i><b>Adapt</b><span>your own difficulty</span></div><div><i>4</i><b>Master</b><span>roadmap to the boss</span></div></div>
+      <p class="by">Created by <b>Adarsh Menon</b></p></section><div id="authbox"></div></div>`; startIntro(); }
+    $("#authbox").innerHTML = `<div class="card auth"><h1>Enter ARCANA</h1>
       <div class="tabs"><button class="${mode === "login" ? "on" : ""}" data-m="login">Log in</button><button class="${mode === "register" ? "on" : ""}" data-m="register">Create account</button></div>
       <form id="f">${mode === "register" ? `<h3>Choose your ranger</h3><div class="pick"><button type="button" class="pickc ${gender === "m" ? "sel" : ""}" data-g="m"><i>&#9794;</i><b>Man</b></button><button type="button" class="pickc ${gender === "f" ? "sel" : ""}" data-g="f"><i>&#9792;</i><b>Woman</b></button></div>` : ""}
       <label>Username<input name="username" maxlength="20" autocomplete="username" required></label>
       <label>Password<input name="password" type="password" autocomplete="${mode === "login" ? "current-password" : "new-password"}" minlength="${mode === "register" ? 8 : 1}" required></label>
       <div id="e">${msg ? `<div class="err">${esc(msg)}</div>` : ""}</div><button class="primary" style="width:100%">${mode === "login" ? "Log in" : "Create account"}</button>
-      <p class="muted small">You stay logged in on this device until you log out.${mode === "register" ? " There is no email, so keep your password safe: it cannot be reset." : ""}</p></form></div>`;
-    app.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => { mode = b.dataset.m; msg = ""; draw(); }));
-    app.querySelectorAll(".pickc").forEach((b) => (b.onclick = () => { gender = b.dataset.g; draw(); }));
+      <p class="muted small">You stay logged in on this device until you log out.${mode === "register" ? " Keep your password safe: it cannot be reset by email." : ""}</p></form><div id="gwrap"></div></div>`;
+    mountGoogle();
+    document.querySelectorAll("#authbox .tabs button").forEach((b) => (b.onclick = () => { mode = b.dataset.m; msg = ""; draw(); }));
+    document.querySelectorAll("#authbox .pickc").forEach((b) => (b.onclick = () => { gender = b.dataset.g; draw(); }));
     $("#f").onsubmit = async (e) => {
       e.preventDefault(); const d = Object.fromEntries(new FormData(e.target)); if (mode === "register") d.gender = gender;
       try { await api(mode === "login" ? "/api/login" : "/api/register", "POST", d); await boot(); } catch (er) { $("#e").innerHTML = `<div class="err">${esc(er.message)}</div>`; }
@@ -47,9 +52,67 @@ function profileDialog() {
   $("#del", d).onclick = async () => { if (confirm("Delete your account and everything in it? This cannot be undone.")) { await api("/api/account", "DELETE"); d.close(); d.remove(); S.user = null; $("#who").innerHTML = ""; authView(); } };
 }
 
+
+// ------------------------------------------------------------------ animated intro (canvas): neon grid road, sun, floating runes, rotating tagline
+let introRaf = 0, introTimer = 0;
+function startIntro() {
+  const cv = $("#bg"); if (!cv) return; const cx = cv.getContext("2d"), still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const runes = ["A+B=?", "\u03A3", "\u222B", "\u03C0", "\u2260", "\u2713", "\u26A1", "\u2605", "DNA", "H\u2082O", "E=mc\u00B2", "1789", "x\u00B2", "\u221A", "\u03B1", "\u03B2", "?!"];
+  const parts = Array.from({ length: 34 }, () => ({ x: Math.random(), y: Math.random(), s: 12 + Math.random() * 26, v: 0.02 + Math.random() * 0.06, t: runes[(Math.random() * runes.length) | 0], p: Math.random() * 6 }));
+  let W = 0, H = 0; const t0 = performance.now();
+  const size = () => { const d = Math.min(2, devicePixelRatio || 1); W = cv.clientWidth; H = cv.clientHeight; cv.width = W * d; cv.height = H * d; cx.setTransform(d, 0, 0, d, 0, 0); };
+  size(); addEventListener("resize", size);
+  const frame = (now) => {
+    if (!document.body.contains(cv)) { removeEventListener("resize", size); return; }
+    const t = (now - t0) / 1000, hz = H * 0.52;
+    const sky = cx.createLinearGradient(0, 0, 0, hz); sky.addColorStop(0, "#010302"); sky.addColorStop(1, "#04170a"); cx.fillStyle = sky; cx.fillRect(0, 0, W, H);
+    const sun = cx.createRadialGradient(W / 2, hz, 4, W / 2, hz, Math.min(W, H) * 0.42); sun.addColorStop(0, "rgba(120,255,90,.55)"); sun.addColorStop(0.35, "rgba(40,200,60,.22)"); sun.addColorStop(1, "rgba(0,0,0,0)"); cx.fillStyle = sun; cx.fillRect(0, 0, W, hz + 2);
+    cx.save(); cx.beginPath(); cx.arc(W / 2, hz, Math.min(W, H) * 0.17, Math.PI, 0); cx.clip();
+    const sg = cx.createLinearGradient(0, hz - 160, 0, hz); sg.addColorStop(0, "#d6ff5c"); sg.addColorStop(1, "#18c93a"); cx.fillStyle = sg; cx.fillRect(0, 0, W, H);
+    cx.fillStyle = "#020503"; for (let i = 0; i < 7; i++) { const y = hz - 8 - i * 17 - ((t * 10) % 17); cx.fillRect(0, y, W, 2 + i * 1.3); } cx.restore();
+    cx.fillStyle = "#010402"; cx.fillRect(0, hz, W, H - hz);
+    cx.strokeStyle = "rgba(57,255,20,.55)"; cx.lineWidth = 1; cx.shadowColor = "#39ff14"; cx.shadowBlur = 6;
+    for (let i = -14; i <= 14; i++) { cx.beginPath(); cx.moveTo(W / 2 + i * 14, hz); cx.lineTo(W / 2 + i * W * 0.16, H); cx.stroke(); }
+    for (let i = 0; i < 16; i++) { const k = ((i + (still ? 0 : t * 0.45)) % 16) / 16, y = hz + (H - hz) * k * k; cx.globalAlpha = 0.25 + k * 0.75; cx.beginPath(); cx.moveTo(0, y); cx.lineTo(W, y); cx.stroke(); }
+    cx.globalAlpha = 1; cx.shadowBlur = 0; cx.textAlign = "center";
+    for (const p of parts) {
+      if (!still) { p.y -= p.v * 0.016; if (p.y < -0.05) { p.y = 1.05; p.x = Math.random(); } }
+      cx.globalAlpha = 0.12 + 0.18 * (0.5 + 0.5 * Math.sin(t * 1.4 + p.p)); cx.fillStyle = "#7dff5f"; cx.font = `700 ${p.s}px Orbitron, monospace`; cx.fillText(p.t, p.x * W + Math.sin(t * 0.6 + p.p) * 14, p.y * hz * 1.9);
+    }
+    cx.globalAlpha = 1;
+    const sw = (t * 0.25) % 1.6 - 0.3, g = cx.createLinearGradient(sw * W - 160, 0, sw * W + 160, 0); g.addColorStop(0, "rgba(57,255,20,0)"); g.addColorStop(0.5, "rgba(57,255,20,.07)"); g.addColorStop(1, "rgba(57,255,20,0)"); cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+    introRaf = still ? 0 : requestAnimationFrame(frame);
+  };
+  cancelAnimationFrame(introRaf); introRaf = requestAnimationFrame(frame);
+  const words = ["a game", "a boss fight", "a quest", "a roadmap", "mastery"], el = $("#rot"); let wi = 0; clearInterval(introTimer);
+  introTimer = setInterval(() => { if (!document.body.contains(el)) return clearInterval(introTimer); el.classList.add("out"); setTimeout(() => { wi = (wi + 1) % words.length; el.textContent = words[wi]; el.classList.remove("out"); }, 350); }, 2300);
+}
+
+// ------------------------------------------------------------------ Continue with Google (shown only when the server has a Google client id)
+async function mountGoogle() {
+  const box = $("#gwrap"); if (!box) return;
+  let cfg; try { cfg = await api("/api/status"); } catch (e) { return; }
+  if (!cfg.googleClientId) return;
+  box.innerHTML = '<div class="or"><span>or</span></div><div id="gbtn"></div>';
+  const init = () => { google.accounts.id.initialize({ client_id: cfg.googleClientId, callback: async (res) => { try { await api("/api/google", "POST", { credential: res.credential }); await boot(); } catch (er) { toast(er.message); } } }); google.accounts.id.renderButton($("#gbtn"), { theme: "filled_black", size: "large", shape: "pill", text: "continue_with", width: 280 }); };
+  if (window.google && window.google.accounts) return init();
+  const sc = document.createElement("script"); sc.src = "https://accounts.google.com/gsi/client"; sc.async = true; sc.onload = init; document.head.appendChild(sc);
+}
+
+// ------------------------------------------------------------------ AI coach card
+function coachCard(c) {
+  if (!c || c.answers < 5) return `<section class="card" id="coach"><h2>Your AI coach</h2><p class="muted">Answer about 10 questions and the coach will study your habits: speed, guessing, hints, forgetting and weak spots.</p></section>`;
+  const bd = c.byDifficulty ? Object.entries(c.byDifficulty).map(([d, v]) => `<div class="cbar"><span>${["", "Easy", "Medium", "Hard"][d] || d}</span><div class="bar ${tone(v.accuracy / 100)}"><i style="width:${v.accuracy}%"></i></div><b>${v.accuracy}%</b></div>`).join("") : "";
+  const steps = c.ai ? c.ai.advice : c.plan;
+  return `<section class="card" id="coach"><div class="row between"><h2>Your AI coach</h2><span class="badge">${c.ai ? "AI plan" : c.aiPending ? "AI is thinking..." : "analysis"}</span></div>
+    ${c.ai ? `<p><b>${esc(c.ai.headline)}</b></p>` : ""}<h3>Accuracy by difficulty</h3>${bd}
+    ${c.findings.length ? "<h3>What I noticed</h3><ul class='ul'>" + c.findings.map((f) => `<li>${esc(f.text)}</li>`).join("") + "</ul>" : ""}
+    <h3>Your next steps</h3><ul class="ul">${steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></section>`;
+}
+
 // ------------------------------------------------------------------ dashboard
 async function load() {
-  [S.rm, S.games] = await Promise.all([api("/api/roadmap"), api("/api/games")]);
+  [S.rm, S.games, S.coach] = await Promise.all([api("/api/roadmap"), api("/api/games"), api("/api/coach").catch(() => null)]);
 }
 function dash() {
   const { stats: st, adaptation: ad, next, achievements, games } = S.rm;
@@ -70,10 +133,11 @@ function dash() {
     <section class="card"><h2>How ARCANA teaches you</h2><div class="row"><span class="badge ${esc(ad.style)}">${esc(ad.style)}</span><span class="muted small">difficulty ${ad.difficulty} of 5 // ${ad.maxHearts} hearts</span></div><div class="dots">${diffDots}</div>
       <p>${esc(ad.why)}</p><p class="muted small">This setup is only yours and updates every chapter: hearts, boss size, rival skill, hints, explanations and extra practice on your weak topics.</p></section>
   </div>
+  ${coachCard(S.coach)}
   <section class="card"><div class="row between"><h2>Your learning roadmap</h2><span class="muted small">click a stop for details</span></div>${games.map((g, gi) => roadBlock(g, gi)).join("")}
     <div class="legend"><span><i style="background:var(--neon)"></i>done</span><span><i style="background:var(--gold)"></i>mastered</span><span><i style="background:var(--bad)"></i>needs review</span><span><i style="background:#fff"></i>you are here</span><span><i style="background:#1d5a14"></i>locked</span></div><div id="detail"></div></section>
   <div class="grid2">
-    <section class="card"><h2>Your games</h2><div class="list">${S.games.map((g) => `<div class="item"><div><b>${esc(g.title)}</b><div class="tag">${g.starter ? "STARTER // " : ""}${g.progress ? (g.progress.finished ? "FINISHED" : "CHAPTER " + (g.progress.chapter + 1)) + " // " + g.progress.score + " PTS" : "NEW"}</div></div><div class="row"><a class="btn" href="/play.html?game=${encodeURIComponent(g.id)}">${g.progress && !g.progress.finished ? "Continue" : "Play"}</a>${g.starter ? "" : `<button class="danger" data-del="${esc(g.id)}">Delete</button>`}</div></div>`).join("")}</div></section>
+    <section class="card"><h2>Your games</h2><div class="list">${S.games.map((g) => `<div class="item"><div><b>${esc(g.title)}</b><div class="tag">${g.starter ? "DEMO GAME // " : ""}${g.progress ? (g.progress.finished ? "FINISHED" : "CHAPTER " + (g.progress.chapter + 1)) + " // " + g.progress.score + " PTS" : "NEW"}</div></div><div class="row"><a class="btn" href="/play.html?game=${encodeURIComponent(g.id)}">${g.progress && !g.progress.finished ? "Continue" : "Play"}</a>${g.starter ? "" : `<button class="danger" data-del="${esc(g.id)}">Delete</button>`}</div></div>`).join("")}</div></section>
     <section class="card" id="upcard"><h2>Make a game from your notes</h2><p class="muted small" id="note"></p>
       <label class="drop" id="drop"><input type="file" id="file" hidden accept=".pdf,.docx,.pptx,.txt,.md,.html,.htm,.csv,.png,.jpg,.jpeg,.webp"><b id="dropt">Click to choose a file, or drop it here</b><span class="muted small">PDF, DOCX, PPTX, TXT, MD, HTML or an image (max 25 MB)</span></label>
       <label>...or paste your notes<textarea id="paste" rows="3" placeholder="Paste at least a few paragraphs"></textarea></label><div id="msg"></div><button class="primary" id="go">Create my game</button></section>
@@ -142,7 +206,10 @@ function wireUpload() {
   };
 }
 
-async function refresh() { await load(); dash(); }
+async function refresh() {
+  await load(); dash();
+  if (S.coach && S.coach.aiPending) setTimeout(async () => { try { S.coach = await api("/api/coach"); const el = $("#coach"); if (el && S.coach.ai) el.outerHTML = coachCard(S.coach); } catch (e) {} }, 20000);
+}
 async function boot() {
   try { S.user = (await api("/api/me")).user; } catch (e) { app.innerHTML = '<div class="card auth"><div class="err">Cannot reach the server.</div></div>'; return; }
   if (!S.user) return authView();

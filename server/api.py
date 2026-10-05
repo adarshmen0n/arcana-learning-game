@@ -66,7 +66,7 @@ class Req:
 
 
 def public_user(u):
-    return {"username": u["username"], "gender": u["gender"]} if u else None
+    return {"username": u["username"], "gender": u["gender"], "email": u["email"] if "email" in u.keys() else None} if u else None
 
 
 # ----------------------------------------------------------------------------- account
@@ -82,6 +82,36 @@ def register(r):
         raise Err(409, "That username is taken. Pick another one.")
     r.cookie(db.new_session(uid))
     return {"user": public_user(db.q("SELECT * FROM users WHERE id=?", (uid,), one=True))}
+
+
+def google_login(r):
+    """Sign in with a Google ID token (Google Identity Services). The token is verified with Google and must be issued for our client id."""
+    if not config.GOOGLE_CLIENT_ID:
+        raise Err(404, "Google sign-in is not set up on this server.")
+    limit(("google", r.ip), 20, 600)
+    tok = str(r.body.get("credential") or "")[:4096]
+    if len(tok) < 100:
+        raise Err(400, "Missing Google credential.")
+    import urllib.parse
+    import urllib.request
+    try:
+        with urllib.request.urlopen("https://oauth2.googleapis.com/tokeninfo?id_token=" + urllib.parse.quote(tok), timeout=10) as resp:
+            info = json.loads(resp.read())
+    except Exception:
+        raise Err(401, "Google did not accept that sign-in.")
+    if info.get("aud") != config.GOOGLE_CLIENT_ID or info.get("iss") not in ("accounts.google.com", "https://accounts.google.com") or str(info.get("email_verified")).lower() != "true":
+        raise Err(401, "Google did not accept that sign-in.")
+    email = str(info.get("email") or "").lower()
+    u = db.google_user(str(info["sub"]), email, email.split("@")[0])
+    if not u:
+        raise Err(500, "Could not create your account.")
+    r.cookie(db.new_session(u["id"]))
+    return {"user": public_user(u)}
+
+
+def coach_get(r):
+    import coach
+    return coach.advice(r.need())
 
 
 def login(r):
@@ -253,13 +283,13 @@ def roadmap_get(r):
 
 
 def status(r):
-    return {"llm": llm.available(), "model": llm.label(), "providers": llm.status(), "web": llm.has_web(), "mode": "ai" if llm.available() else "offline"}
+    return {"llm": llm.available(), "model": llm.label(), "providers": llm.status(), "web": llm.has_web(), "mode": "ai" if llm.available() else "offline", "googleClientId": config.GOOGLE_CLIENT_ID or None}
 
 
 # ----------------------------------------------------------------------------- routing
 ROUTES = [
     ("GET", r"/api/status", status), ("GET", r"/api/me", me),
-    ("POST", r"/api/register", register), ("POST", r"/api/login", login), ("POST", r"/api/logout", logout),
+    ("POST", r"/api/register", register), ("POST", r"/api/login", login), ("POST", r"/api/google", google_login), ("GET", r"/api/coach", coach_get), ("POST", r"/api/logout", logout),
     ("POST", r"/api/profile", profile_set), ("DELETE", r"/api/account", account_delete),
     ("GET", r"/api/games", games_list), ("DELETE", r"/api/games/([a-z0-9]{4,40})", game_delete),
     ("GET", r"/api/scripts/([a-z0-9]+)", script_get),

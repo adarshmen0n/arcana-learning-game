@@ -32,6 +32,12 @@ Every upload needs a login. Each student can build `ARCANA_MAX_GAMES_PER_DAY` ga
 
 **Important on the free plan:** Render's free web service has a temporary disk and sleeps after 15 minutes without visits. Accounts, games, answers and roadmaps are stored in `data/` (SQLite and JSON files) and are lost when the service restarts or redeploys. For real use, add a Render persistent disk mounted at `/opt/render/project/src/data` (paid) or set `ARCANA_DATA` to a mounted volume.
 
+## Sign in with Google (optional)
+Students can always use a username and password. To also show **Continue with Google**: in Google Cloud Console create an OAuth client of type *Web application*, add your site address (for example your onrender.com URL) under *Authorized JavaScript origins*, and set `GOOGLE_CLIENT_ID` in `.env` or the Render environment. The server verifies each Google token itself and links it to one private account.
+
+## How generation stays on your material
+The upload is split into passages and ranked (BM25). Each chapter is written only from the passages that match its topic, then a second AI pass re-answers every question, and finally each question is checked against your text; anything your material does not support is removed.
+
 ## Controls
 `A`/`D` or arrows move, `W`/Space jump, Shift sprint, `E` interact, `1`-`4` choose answers, `M` mute. On phones: on-screen buttons, rotate to landscape.
 

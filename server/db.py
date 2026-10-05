@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import sqlite3
 import threading
@@ -35,6 +36,11 @@ def conn():
             CREATE TABLE IF NOT EXISTS progress(user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, chapter_idx INTEGER NOT NULL DEFAULT 0, score INTEGER NOT NULL DEFAULT 0, finished INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL, PRIMARY KEY(user_id, game_id));
             CREATE TABLE IF NOT EXISTS mastery(user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, concept TEXT NOT NULL, m REAL NOT NULL, attempts INTEGER NOT NULL, correct INTEGER NOT NULL, streak INTEGER NOT NULL, last_ts INTEGER NOT NULL, PRIMARY KEY(user_id, game_id, concept));
             """)
+            for col in ("email TEXT", "google_sub TEXT"):
+                try:
+                    _conn.execute("ALTER TABLE users ADD COLUMN " + col)
+                except sqlite3.OperationalError:
+                    pass
             _conn.execute("INSERT OR IGNORE INTO games(id, owner_id, title, created) VALUES(?, NULL, 'Photosynthesis (starter game)', ?)", (STARTER, int(time.time())))
         return _conn
 
@@ -70,6 +76,24 @@ def create_user(username, pw, gender="m"):
         return run("INSERT INTO users(username,pw_hash,gender,created) VALUES(?,?,?,?)", (username, hash_password(pw), "f" if gender == "f" else "m", int(time.time())))
     except sqlite3.IntegrityError:
         return None
+
+
+def google_user(sub, email, name_hint):
+    """Find the account linked to this Google identity or create one (no password; sign-in only through Google)."""
+    row = q("SELECT * FROM users WHERE google_sub=?", (sub,), one=True) or q("SELECT * FROM users WHERE email=? AND email IS NOT NULL", (email,), one=True)
+    if row:
+        if not row["google_sub"]:
+            run("UPDATE users SET google_sub=? WHERE id=?", (sub, row["id"]))
+        return row
+    base = (re.sub(r"[^A-Za-z0-9_.\-]", "", name_hint)[:14] or "ranger").ljust(3, "x")
+    for i in range(50):
+        name = base if i == 0 else f"{base}{secrets.randbelow(9000) + 1000}"
+        try:
+            uid = run("INSERT INTO users(username,pw_hash,gender,created,email,google_sub) VALUES(?,?,?,?,?,?)", (name, "google", "m", int(time.time()), email, sub))
+            return q("SELECT * FROM users WHERE id=?", (uid,), one=True)
+        except sqlite3.IntegrityError:
+            continue
+    return None
 
 
 def login(username, pw):

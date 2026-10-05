@@ -13,7 +13,9 @@ ARCANA is a **student-only, single-player** product. Content to game to events t
 | Scanned PDF and image reading | NEEDS TESTING | Needs a Claude key (PDF) or Claude/Gemini/OpenAI (images). Never run live. |
 | Cleaning / normalisation | PARTIAL | Whitespace and heading normalisation only |
 | Semantic chunking | PARTIAL | The AI splits the text into chapters at topic boundaries. No page/section/chunk metadata is kept. |
-| Embeddings, vector search, RAG | NOT STARTED | The whole document (up to a size limit) is sent to the model instead. Free plans cap this (Groq about 18k characters). |
+| Retrieval and grounding | PARTIAL, verified | `server/retrieval.py`: passage splitting, BM25 ranking. Each chapter is written from its best-matching passages only, and every generated question is checked for support in the upload; unsupported ones are dropped. No embeddings or vector store. Live run on a history text: all content came from the upload. |
+| AI coach and analytics | DONE, verified (deterministic part) | `server/coach.py`: accuracy by difficulty, speed, rushing, hint reliance, trend, forgetting risk; AI writes a short plan from those numbers in the background. Not machine-learned models. |
+| Google sign-in | CODE DONE, NEEDS GOOGLE CLIENT ID | `POST /api/google` verifies the ID token with Google. Off until `GOOGLE_CLIENT_ID` is set. Never run against real Google. |
 | Concept extraction | DONE, verified live once | Flat list with importance and complexity. No relationships. |
 | Knowledge graph / prerequisites | NOT STARTED | |
 | Learning graph and learning path | PARTIAL | Roadmap shows the chapter path with status and mastery. Order is the AI's chapter order; no prerequisites. |

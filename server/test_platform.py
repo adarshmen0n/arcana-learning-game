@@ -126,6 +126,15 @@ bad = http.client.HTTPConnection("127.0.0.1", PORT)
 bad.request("POST", "/api/login", "{}", {"Content-Type": "text/plain"})
 ok(bad.getresponse().status == 415, "non-JSON POST is refused")
 
+print("coach + google")
+co = A.call("GET", "/api/coach")[1]
+ok(co["answers"] >= 20 and co["plan"] and "byDifficulty" in co and "speed" in co, "the coach analyses stored answers (accuracy by difficulty, speed, hints)")
+ok(Client().call("GET", "/api/coach")[0] == 401, "the coach needs a login")
+ok(Client().call("POST", "/api/google", {"credential": "x" * 200})[0] == 404, "Google sign-in is off until a client id is configured")
+gu = db.google_user("sub123", "pat.lee@gmail.com", "pat.lee")
+ok(gu["username"] == "pat.lee" and db.google_user("sub123", "pat.lee@gmail.com", "pat.lee")["id"] == gu["id"], "a Google identity maps to one account")
+ok(db.login("pat.lee", "google") is None, "Google accounts cannot be entered with a password")
+
 print("logout + delete account")
 ok(A.call("POST", "/api/logout")[0] == 200 and A.call("GET", "/api/me")[1]["user"] is None, "logout ends the session")
 s, _ = A.call("POST", "/api/login", {"username": "alex_9", "password": "longenough1"})

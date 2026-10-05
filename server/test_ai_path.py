@@ -183,13 +183,13 @@ job = run(TEXT)
 p = show("gemini key rejected -> groq", job)
 assert p["status"] == "done" and llm.PROVIDERS[0].dead
 
-# 5. Long document: groq's small limit is skipped without even trying it
+# 5. Long document: the planning call skips groq's small limit; chapter calls get only the retrieved passages
 rebuild("ok", "ok", order="groq,gemini", claude=False)
 long_text = (TEXT + "\n\n") * 8
 assert len(long_text) > llm.PROVIDERS[0].max_chars
 job = run(long_text)
 p = show("long document -> gemini only", job)
-assert p["status"] == "done" and not SEEN["groq"] and SEEN["gemini"]
+assert p["status"] == "done" and SEEN["gemini"]      # planning needs the big-context model; chapters use retrieved passages and may fit smaller ones
 
 # 6. Everything failing gives a clear message, not a crash
 rebuild("rejected", "rejected", order="gemini,groq", claude=False)

@@ -28,7 +28,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
     def log_message(self, fmt, *args):
-        if "/api/jobs/" not in (args[0] if args else ""):      # keep the console quiet during progress polling
+        if "/api/jobs/" not in str(args[0] if args else ""):      # keep the console quiet during progress polling
             super().log_message(fmt, *args)
 
     def ip(self):

@@ -1,4 +1,4 @@
-# Render Blueprint: one web service running the Arcana server (game + teacher portal + API).
+# Render Blueprint: one web service running the Arcana server (student dashboard + game + API). Free plan disk is ephemeral.
 services:
   - type: web
     name: arcana-ai

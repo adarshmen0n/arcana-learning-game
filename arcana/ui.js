@@ -93,145 +93,25 @@ const UI = (() => {
   }
   const readB64 = (file) => new Promise((res, rej) => { const f = new FileReader(); f.onload = () => res(String(f.result).split(",")[1]); f.onerror = () => rej(new Error("Could not read the file")); f.readAsDataURL(file); });
 
-  // Upload panel -> progress panel. Resolves { script, jobId } when the player starts, or null if they go back.
-  async function uploadFlow() {
-    let st; try { st = await api("/api/status"); } catch (e) { await card(`<div class="kicker">Upload</div><h1>Server needed</h1><p>${esc(e.message)}</p>`, "Back"); return null; }
+  // ---- title screen (the student's own game) ----
+  function title(script, info = {}) {
     return new Promise((resolve) => {
-      let file = null;
-      const note = st.llm ? `<span style="color:var(--neon)">AI is ON</span> (${esc(st.model)}). If one service hits its limit, the next one takes over automatically.${st.web ? "" : " Web research is off (it needs a Claude key)."}` : `<span style="color:var(--gold)">Offline mode:</span> no API key found, so a simpler game with fill-in-the-blank questions is built. Add one or more AI keys to the <b>.env</b> file (see <b>.env.example</b>) for the full AI version.`;
-      const p = show(`<div class="kicker">Material to game</div><h1>Upload your study material</h1><p class="muted" style="font-size:15px">${note}</p>
-        <label class="drop" id="drop"><input type="file" id="file" hidden accept=".pdf,.docx,.pptx,.txt,.md,.html,.htm,.csv,.png,.jpg,.jpeg,.webp"><b id="dropt">Click to choose a file, or drop it here</b><span class="muted">PDF, DOCX, PPTX, TXT, MD, HTML or an image (max 25 MB)</span></label>
-        <textarea id="paste" placeholder="...or paste your notes here" rows="4"></textarea>
-        <div class="row end"><button class="btn" id="back">Back</button><button class="btn primary" id="create">Create game</button></div>`, "modal", "wide");
-      const setFile = (f) => { file = f; p.querySelector("#dropt").textContent = f ? `${f.name} (${(f.size / 1024).toFixed(0)} KB)` : "Click to choose a file, or drop it here"; };
-      p.querySelector("#file").onchange = (e) => setFile(e.target.files[0] || null);
-      const drop = p.querySelector("#drop"); drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); }; drop.ondragleave = () => drop.classList.remove("over");
-      drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); };
-      p.querySelector("#back").onclick = () => { hide(); resolve(null); };
-      p.querySelector("#create").onclick = async () => {
-        const text = p.querySelector("#paste").value.trim();
-        if (!file && text.length < 200) { toast("Choose a file or paste at least a few paragraphs"); return; }
-        if (file && file.size > 25 * 1024 * 1024) { toast("That file is over 25 MB"); return; }
-        try {
-          const body = file ? { filename: file.name, data: await readB64(file) } : { filename: "pasted-notes.txt", text };
-          const job = await api("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-          resolve(await progress(job.id));
-        } catch (e) { toast(e.message); }
-      };
-    });
-  }
-  const STEPS = [["ingest", "Read your material"], ["analyze", "Plan chapters"], ["research", "Web research for gaps"], ["chapters", "Write and check levels"], ["finish", "Assemble the game"]];
-  const stepIndex = (stage) => ({ queued: 0, ingest: 0, analyze: 1, research: 2, chapter1: 3, chapters: 3, finish: 4, done: 5 }[stage] ?? 0);
-  function progress(jobId) {
-    return new Promise((resolve) => {
-      const p = show(`<div class="kicker">Building your game</div><h1 id="pt">Working...</h1><div class="pbar"><i id="pfill"></i></div><div class="steps" id="steps"></div><div class="plog" id="plog"></div><div class="row end"><button class="btn" id="cancel">Cancel</button><button class="btn primary hidden" id="goplay">Play now</button></div>`, "modal", "wide");
-      let alive = true, started = false;
-      p.querySelector("#cancel").onclick = () => { alive = false; hide(); resolve(null); };
-      const tick = async () => {
-        if (!alive) return;
-        let j; try { j = await api("/api/jobs/" + jobId); } catch (e) { return setTimeout(tick, 2000); }
-        const si = stepIndex(j.stage);
-        p.querySelector("#pt").textContent = j.status === "error" ? "Something went wrong" : j.status === "done" ? (j.title || "Your game is ready") : j.message;
-        p.querySelector("#pfill").style.width = j.pct + "%";
-        p.querySelector("#steps").innerHTML = STEPS.map((s, n) => `<div class="step ${n < si ? "done" : n === si && j.status !== "done" ? "cur" : ""}"><i></i>${s[1]}${s[0] === "chapters" && j.total ? ` <span class="muted">(${j.ready}/${j.total})</span>` : ""}</div>`).join("");
-        p.querySelector("#plog").innerHTML = j.logs.slice(-5).map((l) => `<div>${esc(l.msg)}</div>`).join("") + (j.status === "error" ? `<div class="err">${esc(j.error)}</div>` : "");
-        const pb = p.querySelector("#goplay");
-        if (j.status === "error") { p.querySelector("#cancel").textContent = "Back"; return; }
-        if (j.ready >= 1 && j.script) { pb.classList.remove("hidden"); pb.textContent = j.status === "done" ? "Start game" : "Play chapter 1 now"; if (!started) { started = true; Sound.correct(); } }
-        pb.onclick = () => { alive = false; hide(); resolve({ script: j.script, jobId }); };
-        if (j.status !== "done") setTimeout(tick, 1000);
-      };
-      tick();
-    });
-  }
-  async function gamesPanel() {
-    let list; try { list = await api("/api/scripts"); } catch (e) { await card(`<div class="kicker">My games</div><h1>Server needed</h1><p>${esc(e.message)}</p>`, "Back"); return null; }
-    return new Promise((resolve) => {
-      const p = show(`<div class="kicker">Saved games</div><h1>My games</h1>${list.length ? `<div class="gamelist">${list.map((g) => `<button class="btn" data-id="${esc(g.id)}">${esc(g.title || g.id)} <span class="tag">${g.chapters} CH // ${esc((g.mode || "").toUpperCase())}</span></button>`).join("")}</div>` : '<p class="muted">Nothing saved yet. Upload some material to create your first game.</p>'}<div class="row end"><button class="btn primary" id="back">Back</button></div>`, "modal", "wide");
-      p.querySelector("#back").onclick = () => { hide(); resolve(null); };
-      p.querySelectorAll(".gamelist .btn").forEach((b) => (b.onclick = async () => { try { const script = await api("/api/scripts/" + b.dataset.id); hide(); resolve({ script }); } catch (e) { toast(e.message); } }));
-    });
-  }
-
-  // ---- classes (student side) ----
-  const SKEY = "arcana_student";
-  const getStudent = () => { try { return JSON.parse(localStorage.getItem(SKEY) || "null"); } catch (e) { return null; } };
-  const sapi = (path, opt = {}) => api(path, { ...opt, headers: { ...(opt.headers || {}), "X-Student-Token": (getStudent() || {}).token || "" } });
-  async function joinFlow() {
-    return new Promise((resolve) => {
-      const p = show(`<div class="kicker">Class</div><h1>Join your class</h1><p class="muted" style="font-size:15px">Type the code your teacher gave you and pick a nickname. No email or password needed.</p>
-        <label class="nm"><span>Class code</span><input id="jc" maxlength="8" placeholder="ABC123" autocomplete="off" style="text-transform:uppercase;letter-spacing:.3em"></label>
-        <label class="nm"><span>Nickname</span><input id="jn" maxlength="20" placeholder="Pick a nickname" autocomplete="off"></label><div id="je"></div>
-        <div class="row end"><button class="btn" id="jb">Back</button><button class="btn primary" id="jg">Join</button></div>`, "modal");
-      p.querySelector("#jb").onclick = () => { hide(); resolve(null); };
-      const go = async () => {
-        const code = p.querySelector("#jc").value.trim(), nickname = p.querySelector("#jn").value.trim(), old = getStudent();
-        try {
-          const r = await api("/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, nickname, token: old && old.code === code.toUpperCase() ? old.token : undefined }) });
-          localStorage.setItem(SKEY, JSON.stringify({ token: r.token, nickname: r.nickname, className: r.className, code: code.toUpperCase() })); hide(); resolve(await classGames());
-        } catch (e) { p.querySelector("#je").innerHTML = `<div class="feedback bad">${esc(e.message)}</div>`; Sound.wrong(); }
-      };
-      p.querySelector("#jg").onclick = go; p.querySelectorAll("input").forEach((i) => (i.onkeydown = (e) => e.key === "Enter" && go()));
-    });
-  }
-  async function classGames() {
-    let d; try { d = await sapi("/api/student/games"); } catch (e) { localStorage.removeItem(SKEY); return joinFlow(); }
-    return new Promise((resolve) => {
-      const p = show(`<div class="kicker">${esc(d.className)} // ${esc(d.nickname)}</div><h1>Class games</h1>${d.games.length ? `<div class="gamelist">${d.games.map((g) => `<button class="btn" data-id="${esc(g.id)}">${esc(g.title)} <span class="tag">${g.progress ? (g.progress.finished ? "FINISHED" : "CHAPTER " + (g.progress.chapter + 1) + " // " + g.progress.score + " PTS") : "NEW"}</span></button>`).join("")}</div>` : '<p class="muted">Your teacher has not assigned a game yet. Check back soon.</p>'}
-        <div class="row end"><button class="btn" id="cl">Leave class</button><button class="btn primary" id="cb">Back</button></div>`, "modal", "wide");
-      p.querySelector("#cb").onclick = () => { hide(); resolve(null); };
-      p.querySelector("#cl").onclick = () => { localStorage.removeItem(SKEY); hide(); resolve(null); };
-      p.querySelectorAll(".gamelist .btn").forEach((b) => (b.onclick = async () => {
-        try { const script = await api("/api/scripts/" + b.dataset.id), g = d.games.find((x) => x.id === b.dataset.id); hide(); resolve({ script, gameId: b.dataset.id, resume: g.progress && !g.progress.finished ? g.progress : null }); } catch (e) { toast(e.message); }
-      }));
-    });
-  }
-
-  // ---- title screen ----
-  function title(script) {
-    return new Promise((resolve) => {
-      let mode = "student";
       const t = $("#title"); t.classList.remove("hidden");
       t.innerHTML = `
         <div class="logo">${logoHTML()}</div>
         <div class="menu">
-          <div class="seg" id="seg"><i class="thumb"></i><button class="on" data-m="student">Student</button><button data-m="teacher">Teacher</button></div>
-          <button class="btn primary" id="play">${script.source ? "Play my game" : "Play demo"} <span class="tag">ENTER</span></button>
-          <button class="btn" id="upload">Upload material <span class="tag">AI</span></button>
-          <button class="btn" id="games">My games</button>
-          <button class="btn" id="klass">${getStudent() ? "Class games" : "Join class"}</button>
+          <button class="btn primary" id="play">${info.resume ? "Continue" : "Start"} <span class="tag">ENTER</span></button>
+          <button class="btn" id="dash">Dashboard</button>
           <button class="btn ghost" id="controls">Controls</button>
         </div>
-        <div class="foot">${script.source ? "Your game" : "Demo chapter"}: ${esc(script.title)} // v0.3</div>
+        <div class="foot">${esc(info.name || "")} // ${esc(script.title)}${info.resume ? " // chapter " + (info.resume.chapter + 1) : ""}</div>
         <div class="press">PRESS ENTER TO START</div>`;
-      const seg = t.querySelector("#seg");
-      seg.querySelectorAll("button").forEach((b) => (b.onclick = () => { mode = b.dataset.m; seg.classList.toggle("t", mode === "teacher"); seg.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); }));
-      const go = (extra) => { keyFn = null; resolve({ mode, ...(extra || {}) }); };
-      t.querySelector("#play").onclick = () => go();
-      t.querySelector("#controls").onclick = () => { card(`<div class="kicker">Controls</div><h1>How to play</h1>${controlsHTML()}`, "Got it"); };
+      const go = () => { keyFn = null; resolve({}); };
+      t.querySelector("#play").onclick = go;
+      t.querySelector("#dash").onclick = () => { location.href = "/"; };
+      t.querySelector("#controls").onclick = () => { keyFn = null; card(`<div class="kicker">Controls</div><h1>How to play</h1>${controlsHTML()}`, "Got it").then(rearm); };
       const rearm = () => onKey((e) => { if (e.key === "Enter" && ov.classList.contains("hidden")) go(); });
-      t.querySelector("#upload").onclick = async () => { keyFn = null; const r = await uploadFlow(); r ? go(r) : rearm(); };
-      t.querySelector("#klass").onclick = async () => { keyFn = null; const r = await (getStudent() ? classGames() : joinFlow()); r ? go(r) : rearm(); };
-      t.querySelector("#games").onclick = async () => { keyFn = null; const r = await gamesPanel(); r ? go(r) : rearm(); };
       rearm();
-    });
-  }
-  function setPlayer(name, gender) { player = { name, gender }; const n = $("#pname"); if (n) n.textContent = name.toUpperCase(); const a = $("#avatar"); if (a) a.style.backgroundImage = ""; }
-  let player = { name: "Ranger", gender: "m" };
-  // Character select: both rangers keep running behind the panel; hovering one highlights it.
-  function chooseHero(scene) {
-    return new Promise((resolve) => {
-      let pick = null;
-      const p = show(`<div class="kicker">Character</div><h1>Who is the ranger?</h1><p class="muted" style="font-size:15px">Pick your hero. The story and the fights are the same for both.</p>
-        <div class="pick"><button class="pickcard" data-g="m"><i>&#9794;</i><b>Man</b><span>Short hair, tactical ranger suit</span></button><button class="pickcard" data-g="f"><i>&#9792;</i><b>Woman</b><span>Ponytail, tactical ranger suit</span></button></div>
-        <label class="nm"><span>Callsign</span><input id="nm" maxlength="14" placeholder="Ranger" autocomplete="off"></label>
-        <div class="row end"><button class="btn primary" id="ok" disabled>Deploy</button></div>`, "side");
-      const cards = [...p.querySelectorAll(".pickcard")], ok = p.querySelector("#ok");
-      const choose = (g) => { pick = g; cards.forEach((c) => c.classList.toggle("sel", c.dataset.g === g)); ok.disabled = false; scene.previewHero(g); Sound.click(); };
-      cards.forEach((c) => { c.onmouseenter = () => scene.previewHero(c.dataset.g); c.onmouseleave = () => scene.previewHero(pick); c.onclick = () => choose(c.dataset.g); });
-      const go = () => { if (!pick) return; hide(); resolve({ gender: pick, name: (p.querySelector("#nm").value.trim() || "Ranger").slice(0, 14) }); };
-      ok.onclick = go;
-      onKey((e) => { if (e.target && e.target.id === "nm") { if (e.key === "Enter") go(); return; } const k = e.key.toLowerCase(); if (k === "m" || e.key === "ArrowLeft") choose("m"); else if (k === "f" || e.key === "ArrowRight") choose("f"); else if (e.key === "Enter") go(); });
     });
   }
   const hideTitle = () => { const t = $("#title"); t.classList.add("hidden"); t.innerHTML = ""; };
@@ -261,6 +141,8 @@ const UI = (() => {
   };
   const icon = (name, cls = "") => `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${IC[name] || ""}</svg>`;
   const STATION = { npc: "talk", obstacle: "lock", match: "swords", mission: "scroll", maze: "pad", shooter: "pad", level_test: "book", mini_boss: "skull", final_boss: "skull" };
+  let player = { name: "Ranger", gender: "m" };
+  function setPlayer(name, gender) { player = { name, gender }; const n = $("#pname"); if (n) n.textContent = name.toUpperCase(); const a = $("#avatar"); if (a) a.style.backgroundImage = ""; }
   let hudBuilt = false, shownScore = 0, scoreTarget = 0, scoreRaf = 0, lastScore = 0, lastHp = null, lastLevel = 1;
   function buildHud() {
     $("#hud").innerHTML = `
@@ -330,7 +212,7 @@ const UI = (() => {
         <div class="row end"><span class="hintkey">SPACE / CLICK</span><button class="btn primary" id="go">Next</button></div>`, "dock", "compact");
       const txt = p.querySelector("#txt"), go = p.querySelector("#go"), note = p.querySelector("#note");
       const typing = () => pos < full.length;
-      const finish = () => { clearInterval(timer); pos = full.length; txt.innerHTML = mark(lines[i].text, lines[i].highlight); go.textContent = i === lines.length - 1 ? "Got it" : "Next"; if (i === lines.length - 1 && teacherNote) note.innerHTML = `<div class="teacher-note"><b>Teaching note:</b> ${esc(teacherNote)}</div>`; };
+      const finish = () => { clearInterval(timer); pos = full.length; txt.innerHTML = mark(lines[i].text, lines[i].highlight); go.textContent = i === lines.length - 1 ? "Got it" : "Next"; if (i === lines.length - 1 && teacherNote) note.innerHTML = `<div class="study-tip"><b>Study tip:</b> ${esc(teacherNote)}</div>`; };
       const start = () => { full = lines[i].text; pos = 0; txt.textContent = ""; note.innerHTML = ""; go.textContent = "Skip"; clearInterval(timer); timer = setInterval(() => { pos += 2; txt.innerHTML = esc(full.slice(0, pos)) + '<span class="caret"></span>'; if (pos % 6 === 0) Sound.tick(); if (pos >= full.length) finish(); }, 20); };
       const advance = () => { if (typing()) return finish(); if (i < lines.length - 1) { i++; start(); } else { clearInterval(timer); hide(); resolve(); } };
       go.onclick = advance; onKey((e) => isGo(e) && (e.preventDefault(), advance())); start();
@@ -339,9 +221,9 @@ const UI = (() => {
 
   // ---- questions ----
   function ask(q, opts = {}) {
-    const { header = "", teacher = false, reveal = true, hint = "", counter = "", cta, dock = false } = opts;
+    const { header = "", explain = false, reveal = true, hint = "", counter = "", cta, dock = false } = opts;
     return new Promise((resolve) => {
-      const order = shuffle(q.options.map((_, i) => i));
+      const t0 = Date.now(), order = shuffle(q.options.map((_, i) => i));
       const p = show(`${header}${counter ? `<div class="qcount">${esc(counter)}</div>` : ""}
         <h2>${esc(q.prompt)}</h2>
         <div class="opts">${order.map((oi, n) => `<button class="opt" style="--i:${n}" data-i="${oi}"><span class="key">${n + 1}</span>${esc(q.options[oi])}</button>`).join("")}</div>
@@ -351,9 +233,9 @@ const UI = (() => {
         if (done) return; done = true;
         const idx = +btn.dataset.i, correct = idx === q.correctIndex; btns.forEach((b) => (b.disabled = true));
         btn.classList.add(correct ? "correct" : "wrong"); if (reveal || correct) btns.find((b) => +b.dataset.i === q.correctIndex).classList.add("correct");
-        correct ? Sound.correct() : Sound.wrong(); if (self.onAnswer) self.onAnswer(correct, q);
+        correct ? Sound.correct() : Sound.wrong(); if (self.onAnswer) self.onAnswer(correct, q, { ms: Date.now() - t0, hints: !correct && hint && !reveal ? 1 : 0 });
         let fb = correct ? "✔ Correct!" : "✖ Not quite."; if (!correct && hint && !reveal) fb += ` Hint: ${esc(hint)}`;
-        if (q.explanation && (correct || reveal || teacher)) fb += ` ${esc(q.explanation)}`;
+        if (q.explanation && (correct || reveal || explain)) fb += ` ${esc(q.explanation)}`;
         p.querySelector("#fb").innerHTML = `<div class="feedback ${correct ? "" : "bad"}">${fb}</div>`;
         p.querySelector("#actions").innerHTML = `<button class="btn primary" id="go">${cta || (!correct && !reveal ? "Try again" : "Continue")}</button>`;
         const go = () => { hide(); resolve({ correct, conceptId: q.conceptId }); };
@@ -392,6 +274,6 @@ const UI = (() => {
   }
   const bars = (rows) => `<div class="bars">${rows.map((r) => `<div class="bar"><span>${esc(r.label)}</span><div class="track"><div class="fill ${r.cls}" style="width:${r.pct}%"></div></div><span>${esc(r.val)}</span></div>`).join("")}</div>`;
 
-  const self = { getStudent, onAnswer: null, combo, icon, chooseHero, setPlayer, api, $, sleep, esc, shuffle, show, hide, card, choice, title, hideTitle, hud, hideHud, hint, bossBar, toast, flash, touch, wipe, cine, chapterCard, dialogue, ask, missionOrder, missionPairs, bars, controlsHTML, setScene: (s) => (sceneRef = s) };
+  const self = { onAnswer: null, combo, icon, setPlayer, api, $, sleep, esc, shuffle, show, hide, card, choice, title, hideTitle, hud, hideHud, hint, bossBar, toast, flash, touch, wipe, cine, chapterCard, dialogue, ask, missionOrder, missionPairs, bars, controlsHTML, setScene: (s) => (sceneRef = s) };
   return self;
 })();

@@ -423,7 +423,10 @@ def check_script(s) -> list:
 
 
 def load_script(sid):
-    f = SCRIPTS / (re.sub(r"[^a-z0-9]", "", sid.lower()) + ".json")
+    sid = re.sub(r"[^a-z0-9]", "", sid.lower())
+    if sid == "starter":
+        return json.loads((pathlib.Path(__file__).parent / "starter_game.json").read_text(encoding="utf-8"))
+    f = SCRIPTS / (sid + ".json")
     return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
 
 

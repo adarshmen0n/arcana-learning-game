@@ -1,29 +1,37 @@
 // Arcana engine: a fixed 2D side-scroller that plays any GameScript.
 // The player walks, jumps and interacts; the script decides what each station teaches or asks.
-let SCRIPT = window.SAMPLE_SCRIPT;
+let SCRIPT = null;
 let LIVE = null; // job id while an uploaded game is still being generated
 const { W, H, GROUND } = Art;
 const FIRST = 1100, SPACING = 940, FONT = '"Orbitron", sans-serif';
 const NEON_HEX = 0x39ff14;
 const V = { left: false, right: false, jump: false, act: false }; // touch / virtual keys
 
-const G = { missed: [], gameId: null, name: "Ranger", gender: "m", teacher: false, hp: 5, maxHp: 5, score: 0, mistakes: {}, chapterMistakes: 0, finalResult: null, chapterIdx: 0, total: 1 };
-// Sends each answer and the chapter progress to the teacher's report (only when a student joined a class and plays an assigned game).
+const G = { missed: [], gameId: null, name: "Ranger", gender: "m", adapt: null, hp: 5, maxHp: 5, score: 0, mistakes: {}, chapterMistakes: 0, finalResult: null, chapterIdx: 0, total: 1 };
+// Every answer and the chapter progress go to this student's private record; the server turns them into mastery.
 const Track = {
   on: false, q: [], gameId: null, ctx: { kind: "", chapter: "" },
-  start(gameId) {
-    const s = UI.getStudent(); if (!s || !gameId) return; this.on = true; this.gameId = gameId; this.token = s.token;
-    setInterval(() => this.flush(), 8000); addEventListener("pagehide", () => this.flush(true));
-  },
-  add(q, ok) { if (!this.on || !q) return; this.q.push({ qid: q.id, concept: q.conceptId, correct: !!ok, kind: this.ctx.kind, chapter: this.ctx.chapter }); if (this.q.length >= 10) this.flush(); },
+  start(gameId) { this.on = true; this.gameId = gameId; setInterval(() => this.flush(), 6000); addEventListener("pagehide", () => this.flush(true)); },
+  add(q, ok, x = {}) { if (!this.on || !q) return; this.q.push({ qid: q.id, concept: q.conceptId, correct: !!ok, difficulty: q.difficulty || 2, ms: x.ms || 0, hints: x.hints || 0, kind: this.ctx.kind, chapter: this.ctx.chapter }); if (this.q.length >= 8) this.flush(); },
   send(path, body, beacon) {
-    const json = JSON.stringify({ ...body, token: this.token });
+    const json = JSON.stringify(body);
     if (beacon && navigator.sendBeacon) return navigator.sendBeacon(path, new Blob([json], { type: "application/json" }));
-    return fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Student-Token": this.token }, body: json, keepalive: true }).catch(() => {});
+    return fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: json, keepalive: true }).catch(() => {});
   },
-  flush(beacon) { if (!this.on || !this.q.length) return; this.send("/api/events", { gameId: this.gameId, events: this.q.splice(0) }, beacon); },
-  progress(chapterIdx, finished) { if (!this.on) return; this.flush(); this.send("/api/progress", { gameId: this.gameId, chapterIdx, score: G.score, finished: !!finished }); },
+  flush(beacon) { if (!this.on || !this.q.length) return Promise.resolve(); return this.send("/api/events", { gameId: this.gameId, events: this.q.splice(0) }, beacon); },
+  async progress(chapterIdx, finished) { if (!this.on) return; await this.flush(); await this.send("/api/progress", { gameId: this.gameId, chapterIdx, score: G.score, finished: !!finished }); },
 };
+// The personal setup the server worked out for this student (difficulty, hearts, hints, practice...).
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const A = () => G.adapt || { difficulty: 3, style: "balanced", maxHearts: 5, rivalBonus: 0, bossRatioDelta: 0, bossCountDelta: 0, testPassDelta: 0, targetDifficulty: 2, showHints: true, explainAlways: false, scoreBonus: 1, weak: [], practice: [] };
+async function loadAdapt() {
+  try { G.adapt = await UI.api("/api/adapt?game=" + encodeURIComponent(G.gameId)); } catch (e) { /* keep the previous setup */ }
+  G.maxHp = A().maxHearts; G.hp = G.maxHp;
+}
+function pickQs(pool, n) {                                    // favour weak topics and the student's target difficulty
+  const weak = new Set((A().weak || []).map((w) => w.id)), t = A().targetDifficulty;
+  return pool.map((q) => ({ q, s: Math.random() + (weak.has(q.conceptId) ? 1.2 : 0) - 0.35 * Math.abs((q.difficulty || 2) - t) })).sort((x, y) => y.s - x.s).slice(0, n).map((x) => x.q);
+}
 const questionsOf = (ch) => ch.scenes.flatMap((s) => (s.question ? [s.question] : s.questions || []));
 
 class World extends Phaser.Scene {
@@ -115,7 +123,7 @@ class World extends Phaser.Scene {
       e.verb = "Begin mission"; e.top = 300; e.gem = [gem, gl]; e.upd = (dt, t) => { const b = Math.sin(t * 0.003) * 10; gem.y = -200 + b; gl.y = -200 + b; gem.rotation = Math.sin(t * 0.002) * 0.1; gl.alpha = 0.6 + 0.3 * Math.sin(t * 0.007); };
     } else if (s.type === "level_test") {
       const sw = add(this.add.image(0, -150, "swirl").setBlendMode(Phaser.BlendModes.ADD).setScale(0.62)); add(this.add.image(0, 0, "door_frame").setOrigin(0.5, 1).setScale(1.05));
-      e.verb = "Enter trial"; e.top = 380; e.stopX = x - 140; e.sw = sw; e.upd = (dt) => { sw.rotation += dt * 1.2; };
+      e.verb = s.practice ? "Practice session" : "Enter trial"; e.top = 380; e.stopX = x - 140; e.sw = sw; e.upd = (dt) => { sw.rotation += dt * 1.2; };
     } else if (s.type === "maze" || s.type === "shooter") {
       const cab = add(this.add.image(0, 0, "cabinet").setOrigin(0.5, 1).setScale(0.64)), gl = add(this.add.image(0, -210, "spark").setBlendMode(Phaser.BlendModes.ADD).setTint(NEON_HEX).setScale(3.2).setAlpha(0.35));
       e.verb = s.type === "maze" ? "Play Maze Run" : "Play Invaders"; e.top = 400; e.stopX = x - 140; e.upd = (dt, t) => gl.setAlpha(0.28 + 0.14 * Math.sin(t * 0.005));
@@ -243,7 +251,7 @@ class World extends Phaser.Scene {
 }
 
 // ---- gameplay helpers ----
-const NEXT = { npc: (s) => "Talk to " + s.npc.name, obstacle: () => "Break the seal", match: (s) => "Challenge " + s.opponent.name, mission: () => "Complete the mission", maze: () => "Play Maze Run", shooter: () => "Play Invaders", level_test: () => "Pass the trial", mini_boss: (s) => "Defeat " + s.boss.name, final_boss: (s) => "Defeat " + s.boss.name };
+const NEXT = { npc: (s) => "Talk to " + s.npc.name, obstacle: () => "Break the seal", match: (s) => "Challenge " + s.opponent.name, mission: () => "Complete the mission", maze: () => "Play Maze Run", shooter: () => "Play Invaders", level_test: (s) => (s.practice ? "Practise your weak topics" : "Pass the trial"), mini_boss: (s) => "Defeat " + s.boss.name, final_boss: (s) => "Defeat " + s.boss.name };
 function refreshHud() {
   const ch = G.ch || { scenes: [] }, done = G.done || 0, nx = ch.scenes[done];
   UI.hud({ title: ch.title || "", hp: G.hp, maxHp: G.maxHp, score: G.score, done, total: G.total, types: ch.scenes.map((s) => s.type), next: done >= ch.scenes.length ? "Head to the portal" : nx ? NEXT[nx.type](nx) : "", streak: G.streak || 0 });
@@ -251,17 +259,17 @@ function refreshHud() {
 // Returns true when the player ran out of hearts (and revives them).
 function hurt(scene, conceptId, silent) {
   if (conceptId) G.mistakes[conceptId] = (G.mistakes[conceptId] || 0) + 1;
-  G.chapterMistakes++; if (G.teacher) return false;
+  G.chapterMistakes++;
   G.hp--; if (!silent) scene.hurtFx();
   if (G.hp <= 0) { G.hp = G.maxHp; G.score = Math.max(0, G.score - 20); UI.toast("Out of hearts: restored (-20 score)"); refreshHud(); return true; }
   refreshHud(); return false;
 }
-const gain = (n) => { G.score += n; refreshHud(); };
+const gain = (n) => { G.score += Math.round(n * A().scoreBonus); refreshHud(); };
 
 async function playObstacle(scene, ent) {
   const s = ent.s;
   for (;;) {
-    const r = await UI.ask(s.question, { teacher: G.teacher, reveal: false, hint: s.hint });
+    const r = await UI.ask(s.question, { explain: A().explainAlways, reveal: false, hint: A().showHints ? s.hint : "" });
     if (r.correct) { gain(10); return; }
     hurt(scene, r.conceptId);
   }
@@ -272,9 +280,9 @@ async function playMatch(scene, ent) {
     let me = 0, bot = 0;
     for (let i = 0; i < n; i++) {
       const header = UI.bars([{ label: "You", cls: "me", pct: (me / n) * 100, val: me }, { label: s.opponent.name, cls: "foe", pct: (bot / n) * 100, val: bot }]);
-      const r = await UI.ask(s.questions[i], { teacher: G.teacher, header, counter: `Match // question ${i + 1} of ${n}` });
+      const r = await UI.ask(s.questions[i], { explain: A().explainAlways, header, counter: `Match // question ${i + 1} of ${n}` });
       if (r.correct) { me++; gain(10); } else hurt(scene, r.conceptId, true);
-      if (Math.random() < s.opponent.skill) bot++;
+      if (Math.random() < clamp(s.opponent.skill + A().rivalBonus, 0.2, 0.95)) bot++;
     }
     const win = me > bot; const html = `<div class="kicker">Match result</div><h1>${win ? "You win!" : me === bot ? "Draw" : "Defeated"}</h1><p>You ${me} : ${bot} ${UI.esc(s.opponent.name)}</p>`;
     if (win) { gain(50); await UI.card(html); return; }
@@ -288,10 +296,11 @@ async function playMission(scene, ent) {
 async function playTest(scene, ent) {
   const s = ent.s;
   for (;;) {
-    const qs = UI.shuffle(s.questions); let right = 0;
-    for (let i = 0; i < qs.length; i++) { const r = await UI.ask(qs[i], { teacher: G.teacher, counter: `Trial // question ${i + 1} of ${qs.length}` }); r.correct ? right++ : hurt(scene, r.conceptId, true); }
-    if (right >= s.passMark) { gain(40); await UI.card(`<div class="kicker">Trial</div><h1>Cleared!</h1><p>${right} of ${qs.length} correct.</p>`); return; }
-    await UI.card(`<div class="kicker">Trial</div><h1>Almost</h1><p>${right} of ${qs.length} correct. You need ${s.passMark}. Try again.</p>`, "Retry");
+    const qs = UI.shuffle(s.questions); let right = 0, pass = s.practice ? 0 : Math.max(1, s.passMark + A().testPassDelta);
+    for (let i = 0; i < qs.length; i++) { const r = await UI.ask(qs[i], { explain: s.practice || A().explainAlways, counter: `${s.practice ? "Practice" : "Trial"} // question ${i + 1} of ${qs.length}` }); r.correct ? right++ : hurt(scene, r.conceptId, true); }
+    if (s.practice) { gain(20 + 5 * right); await UI.card(`<div class="kicker">Practice</div><h1>Nice work</h1><p>${right} of ${qs.length} correct. ARCANA picked these from the topics you found hardest, and it keeps score of how they go.</p>`); return; }
+    if (right >= pass) { gain(40); await UI.card(`<div class="kicker">Trial</div><h1>Cleared!</h1><p>${right} of ${qs.length} correct.</p>`); return; }
+    await UI.card(`<div class="kicker">Trial</div><h1>Almost</h1><p>${right} of ${qs.length} correct. You need ${pass}. Try again.</p>`, "Retry");
   }
 }
 async function fightBoss(scene, ent, questions, passRatio, label) {
@@ -301,7 +310,7 @@ async function fightBoss(scene, ent, questions, passRatio, label) {
     const qs = UI.shuffle(questions); let right = 0, fainted = false; G.hp = G.maxHp; refreshHud(); Fight.begin(scene, ent);
     for (let i = 0; i < n; i++) {
       UI.bossBar(true, { name: s.boss.name, pct: ((n - right) / n) * 100, left: `Question ${i + 1} / ${n}`, right: `Need ${need} correct` });
-      const r = await UI.ask(qs[i], { teacher: G.teacher, dock: true, counter: `${label} // question ${i + 1} of ${n}` });
+      const r = await UI.ask(qs[i], { explain: A().explainAlways, dock: true, counter: `${label} // question ${i + 1} of ${n}` });
       if (r.correct) { right++; gain(15); UI.bossBar(true, { name: s.boss.name, pct: ((n - right) / n) * 100, left: `Question ${i + 1} / ${n}`, right: `Need ${need} correct` }); await Fight.heroAttack(scene, ent); }
       else { const out = hurt(scene, r.conceptId, true); await Fight.enemyAttack(scene, ent); if (out) { fainted = true; break; } }
     }
@@ -321,7 +330,7 @@ async function playArcade(scene, ent) {
   await UI.chapterCard({ kicker: "Arcade level", title: s.title || (maze ? "Maze Run" : "Invaders"), sub: maze ? "Reach the terminal with the right answer. Dodge the sentries." : "Shoot the block with the right answer. Dodge the return fire." });
   Sound.setMood("volcano"); UI.hideHud();
   await new Promise((res) => {
-    const data = { questions: s.questions, seed: (G.chapterIdx + 1) * 5 + 3, ghosts: s.ghosts || 2, maxHp: G.maxHp, getScore: () => G.score, getHp: () => (G.teacher ? G.maxHp : G.hp),
+    const data = { questions: s.questions, seed: (G.chapterIdx + 1) * 5 + 3, ghosts: s.ghosts || 2, maxHp: G.maxHp, getScore: () => G.score, getHp: () => G.hp,
       addScore: (n) => { G.score += n; refreshHud(); }, onRight: () => gain(20), onWrong: (q) => hurt(scene, q.conceptId, true), onHit: () => { UI.flash(); hurt(scene, null, true); },
       done: () => { scene.scene.stop(key); scene.scene.resume("world"); res(); } };
     scene.scene.pause("world"); scene.scene.launch(key, data);
@@ -330,17 +339,23 @@ async function playArcade(scene, ent) {
 }
 async function playScene(scene, ch, ent) {
   const s = ent.s; Track.ctx = { kind: s.type, chapter: ch.id };
-  if (s.type === "npc") await UI.dialogue(s.npc, s.dialogue, { teacherNote: G.teacher ? s.teacherNote : null });
+  if (s.type === "npc") await UI.dialogue(s.npc, s.dialogue, { teacherNote: A().explainAlways ? s.teacherNote : null });
   else if (s.type === "obstacle") await playObstacle(scene, ent);
   else if (s.type === "match") await playMatch(scene, ent);
   else if (s.type === "mission") await playMission(scene, ent);
   else if (s.type === "level_test") await playTest(scene, ent);
   else if (s.type === "maze" || s.type === "shooter") await playArcade(scene, ent);
-  else if (s.type === "mini_boss") await fightBoss(scene, ent, UI.shuffle(questionsOf(ch)).slice(0, s.count), 0.6, "Mini-boss");
-  else if (s.type === "final_boss") await fightBoss(scene, ent, UI.shuffle([...SCRIPT.chapters.flatMap(questionsOf), ...(SCRIPT.finalBoss.extraQuestions || [])]).slice(0, s.count), s.passMarkRatio, "Final boss");
+  else if (s.type === "mini_boss") await fightBoss(scene, ent, pickQs(questionsOf(ch), Math.max(4, s.count + A().bossCountDelta)), clamp(0.6 + A().bossRatioDelta, 0.4, 0.85), "Mini-boss");
+  else if (s.type === "final_boss") await fightBoss(scene, ent, pickQs([...SCRIPT.chapters.flatMap(questionsOf), ...(SCRIPT.finalBoss.extraQuestions || [])], s.count), clamp(s.passMarkRatio + A().bossRatioDelta, 0.5, 0.9), "Final boss");
 }
 
 async function playChapter(scene, ch, idx, total, at = 0) {
+  await Track.flush(); await loadAdapt();                       // the setup follows the latest performance
+  if (ch.id !== "final" && !ch._practiced) {                    // add a practice station for this student's weak topics
+    ch._practiced = true;
+    const pool = SCRIPT.chapters.flatMap(questionsOf), qs = (A().practice || []).map((id) => pool.find((q) => q.id === id)).filter(Boolean).slice(0, 4);
+    if (qs.length >= 2) ch.scenes = [...ch.scenes.slice(0, -1), { type: "level_test", id: ch.id + "-practice", practice: true, questions: qs, passMark: 0 }, ch.scenes[ch.scenes.length - 1]];
+  }
   G.ch = ch; G.done = at; G.total = ch.scenes.length; G.chapterMistakes = 0; G.chapterIdx = idx;
   await UI.wipe(async () => { UI.hideTitle(); scene.build(ch); if (at) { scene.entities.slice(0, at).forEach((e) => e.root.setVisible(false)); scene.hx = scene.entities[at].stopX - 420; scene.camX = scene.hx - 440; scene.orbs.forEach((o) => (o.got = true, o.g.setVisible(false))); } refreshHud(); });
   await UI.chapterCard({ kicker: ch.id === "final" ? "Final stage" : `Chapter ${idx + 1} of ${total - 1}`, title: ch.title, sub: ch.goal });
@@ -357,11 +372,13 @@ async function playChapter(scene, ch, idx, total, at = 0) {
 
 async function ending() {
   UI.hideHud(); const names = {}; SCRIPT.chapters.forEach((c) => c.concepts.forEach((k) => (names[k.id] = k.name)));
-  const weak = Object.entries(G.mistakes).sort((a, b) => b[1] - a[1]).slice(0, 4), fr = G.finalResult; Sound.win(); Track.flush();
+  const weak = Object.entries(G.mistakes).sort((a, b) => b[1] - a[1]).slice(0, 4), fr = G.finalResult; Sound.win(); await Track.flush();
   for (;;) {
-    const pick = await UI.choice(`<div class="kicker">Quest complete</div><h1>${UI.esc(SCRIPT.title)} mastered</h1><p>Total score <mark>${G.score}</mark>${fr ? ` // Final boss ${fr.right}/${fr.n}` : ""}</p>
-      ${weak.length ? `<p class="muted">Topics to review</p><ul class="weak">${weak.map(([id, c]) => `<li>${UI.esc(names[id] || id)} <span class="muted">(${c} miss${c > 1 ? "es" : ""})</span></li>`).join("")}</ul>` : "<p>Flawless run. No weak topics.</p>"}`, G.missed.length ? ["Play again", `Review ${G.missed.length} missed`] : ["Play again"]);
-    if (pick === 0 || !G.missed.length) break;
+    const labels = G.missed.length ? [`Review ${G.missed.length} missed`, "Play again", "Roadmap"] : ["Play again", "Roadmap"];
+    const pick = labels[await UI.choice(`<div class="kicker">Quest complete</div><h1>${UI.esc(SCRIPT.title)} mastered</h1><p>Total score <mark>${G.score}</mark>${fr ? ` // Final boss ${fr.right}/${fr.n}` : ""}</p>
+      ${weak.length ? `<p class="muted">Topics ARCANA will practise with you next</p><ul class="weak">${weak.map(([id, c]) => `<li>${UI.esc(names[id] || id)} <span class="muted">(${c} miss${c > 1 ? "es" : ""})</span></li>`).join("")}</ul>` : "<p>Flawless run. No weak topics.</p>"}`, labels)];
+    if (pick === "Roadmap") { location.href = "/"; return; }
+    if (pick === "Play again") break;
     await UI.card(`<div class="kicker">Revision</div><h1>Questions to revisit</h1><div class="review">${G.missed.map((q) => `<div class="rv"><b>${UI.esc(q.prompt)}</b><div class="ans">${UI.esc(q.options[q.correctIndex])}</div>${q.explanation ? `<div class="muted">${UI.esc(q.explanation)}</div>` : ""}</div>`).join("")}</div>`, "Back", "modal", "wide");
   }
   location.reload();
@@ -387,22 +404,30 @@ const ensureDone = () => waitFor((j) => j.status === "done", "Preparing the fina
 
 async function main(scene) {
   scene.startTitle();
-  const id = new URLSearchParams(location.search).get("script");
-  if (id) { try { SCRIPT = await UI.api("/api/scripts/" + encodeURIComponent(id)); } catch (e) { /* fall back to the demo */ } }
-  const res = await UI.title(SCRIPT); G.teacher = res.mode === "teacher";
-  UI.onAnswer = (ok, q) => { Track.add(q, ok); if (!ok && q && !G.missed.find((m) => m.id === q.id)) G.missed.push(q); G.streak = ok ? (G.streak || 0) + 1 : 0; if (ok && G.streak >= 3) UI.combo(G.streak); refreshHud(); };
-  UI.hideTitle(); const who = await UI.chooseHero(scene); G.gender = who.gender; G.name = who.name; scene.setHero(who.gender); UI.setPlayer(who.name, who.gender);
-  if (res.script) { SCRIPT = res.script; SCRIPT.chapters = SCRIPT.chapters.slice(); LIVE = res.jobId || null; }
-  G.gameId = res.gameId || null; if (G.gameId) { Track.start(G.gameId); if (res.resume) G.score = res.resume.score || 0; }
+  let me = null; try { me = (await UI.api("/api/me")).user; } catch (e) { /* offline */ }
+  const qp = new URLSearchParams(location.search), jid = qp.get("job"), gid = jid || qp.get("game");
+  if (!me || !gid) { location.href = "/"; return; }                   // log in on the dashboard first
+  G.name = me.username; G.gender = me.gender; G.gameId = gid; scene.previewHero(G.gender);
+  let resume = null;
+  try {
+    if (jid) { const j = await UI.api("/api/jobs/" + jid); if (!j.script) throw new Error("This game is not ready yet."); SCRIPT = j.script; SCRIPT.chapters = SCRIPT.chapters.slice(); LIVE = j.status === "done" ? null : jid; }
+    else SCRIPT = await UI.api("/api/scripts/" + encodeURIComponent(gid));
+    resume = (await UI.api("/api/progress?game=" + encodeURIComponent(gid))).progress;
+  } catch (e) { await UI.card(`<div class="kicker">Cannot open</div><h1>Game unavailable</h1><p>${UI.esc(e.message)}</p>`, "Back to dashboard"); location.href = "/"; return; }
+  if (resume && resume.finished) resume = null;                        // a finished game starts over; mastery is kept
+  if (resume) G.score = resume.score || 0;
+  await UI.title(SCRIPT, { name: me.username, resume });
+  UI.onAnswer = (ok, q, x) => { Track.add(q, ok, x); if (!ok && q && !G.missed.find((m) => m.id === q.id)) G.missed.push(q); G.streak = ok ? (G.streak || 0) + 1 : 0; if (ok && G.streak >= 3) UI.combo(G.streak); refreshHud(); };
+  UI.hideTitle(); scene.setHero(G.gender); UI.setPlayer(me.username, G.gender); Track.start(gid);
   let total = SCRIPT.chapters.length;
   if (LIVE) { const j = await UI.api("/api/jobs/" + LIVE); total = j.total || total; if (j.status === "done") LIVE = null; }
-  const q = new URLSearchParams(location.search), c0 = +q.get("ch") || (res.resume ? Math.min(res.resume.chapter, total) : 0); // dev shortcuts: ?ch=1&at=7
+  const c0 = +qp.get("ch") || (resume ? Math.min(resume.chapter, total) : 0);   // dev shortcuts: ?ch=1&at=7
   for (let i = c0; i <= total; i++) {
     let ch;
     if (i < total) ch = await ensureChapter(i);
     else { await ensureDone(); const fb = SCRIPT.finalBoss; ch = { id: "final", title: fb.title, goal: fb.goal, theme: fb.theme, concepts: [], scenes: [{ type: "final_boss", id: "fin", boss: fb.boss, count: fb.count, passMarkRatio: fb.passMarkRatio }] }; }
-    await playChapter(scene, ch, i, total + 1, i === c0 ? +q.get("at") || 0 : 0);
-    Track.progress(i + 1, i === total);
+    await playChapter(scene, ch, i, total + 1, i === c0 ? +qp.get("at") || 0 : 0);
+    await Track.progress(i + 1, i === total);
   }
   await ending();
 }

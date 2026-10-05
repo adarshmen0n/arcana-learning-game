@@ -1,4 +1,4 @@
-"""Platform tests on a throwaway database: accounts, classes, students, permissions, events, reports, rate limits."""
+"""Platform tests on a throwaway database: accounts, privacy between students, mastery, adaptation, roadmap."""
 import functools
 import http.client
 import json
@@ -21,24 +21,20 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 
 
 class Client:
-    def __init__(self, token=None):
-        self.cookie, self.token = None, token
+    def __init__(self):
+        self.cookie = None
 
-    def call(self, method, path, body=None, headers=None):
+    def call(self, method, path, body=None):
         c = http.client.HTTPConnection("127.0.0.1", PORT)
         h = {"Content-Type": "application/json"}
         if self.cookie:
             h["Cookie"] = self.cookie
-        if self.token:
-            h["X-Student-Token"] = self.token
-        h.update(headers or {})
         c.request(method, path, json.dumps(body) if body is not None else None, h)
         r = c.getresponse()
         sc = r.getheader("Set-Cookie")
         if sc:
-            self.cookie = sc.split(";")[0] if "=;" not in sc and not sc.startswith("arcana_session=;") else None
-        data = json.loads(r.read() or b"{}")
-        return r.status, data
+            self.cookie = None if sc.startswith("arcana_session=;") else sc.split(";")[0]
+        return r.status, json.loads(r.read() or b"{}")
 
 
 def ok(cond, msg):
@@ -46,87 +42,94 @@ def ok(cond, msg):
     assert cond, msg
 
 
-# a finished game on disk, as the pipeline would leave it
-game = {"schemaVersion": 1, "title": "Demo Game", "chapters": [{"id": "ch1", "title": "One", "goal": "g", "theme": {"background": "ancient_forest"}, "concepts": [{"id": "c1", "name": "Chlorophyll"}, {"id": "c2", "name": "Stroma"}],
-        "scenes": [{"type": "obstacle", "id": "s1", "question": {"id": "q1", "conceptId": "c1", "prompt": "Pigment?", "options": ["A", "B"], "correctIndex": 0, "explanation": "x"}},
-                   {"type": "match", "id": "s2", "opponent": {"name": "R", "skill": 0.5}, "questions": [{"id": "q2", "conceptId": "c2", "prompt": "Where?", "options": ["X", "Y"], "correctIndex": 1, "explanation": "y"}]},
-                   {"type": "mini_boss", "id": "s3", "boss": {"name": "B", "kind": "enforcer"}, "count": 2}]}],
-        "finalBoss": {"title": "F", "goal": "g", "theme": {"background": "ember_citadel"}, "boss": {"name": "O", "kind": "overlord"}, "count": 25, "passMarkRatio": 0.7}}
-GID = "abcdef0123456789"
-(pipeline.SCRIPTS / f"{GID}.json").write_text(json.dumps(game), encoding="utf-8")
+STARTER = pipeline.load_script("starter")
+QS = [q for ch in STARTER["chapters"] for s in ch["scenes"] for q in ([s["question"]] if "question" in s else s.get("questions", []))]
 
-print("teacher accounts")
-T = Client()
-s, d = T.call("POST", "/api/teacher/register", {"email": "bad", "name": "Ms Rao", "password": "longenough1"})
-ok(s == 400, "rejects an invalid email")
-s, d = T.call("POST", "/api/teacher/register", {"email": "rao@school.org", "name": "Ms Rao", "password": "short"})
-ok(s == 400, "rejects a short password")
-s, d = T.call("POST", "/api/teacher/register", {"email": "rao@school.org", "name": "Ms Rao", "password": "longenough1"})
-ok(s == 200 and T.cookie, "registers and signs in")
-ok(db.q("SELECT pw_hash FROM teachers", one=True)["pw_hash"].startswith("scrypt$"), "password is stored hashed")
-s, d = T.call("GET", "/api/me")
-ok(d["teacher"]["email"] == "rao@school.org", "session cookie identifies the teacher")
-ok(Client().call("POST", "/api/teacher/login", {"email": "rao@school.org", "password": "wrongpass1"})[0] == 401, "wrong password is refused")
-ok(Client().call("POST", "/api/teacher/register", {"email": "RAO@school.org", "name": "x", "password": "longenough1"})[0] == 409, "duplicate email (any case) is refused")
 
-print("classes + games")
-ok(Client().call("GET", "/api/classes")[0] == 401, "classes need a login")
-s, d = T.call("POST", "/api/classes", {"name": "Grade 9 Biology"})
-CID = d["id"]
-s, lst = T.call("GET", "/api/classes")
-CODE = lst[0]["code"]
-ok(len(CODE) == 6 and lst[0]["students"] == 0, f"class created with a 6-character join code")
-db.add_game(GID, db.q("SELECT id FROM teachers", one=True)["id"], "Demo Game")
-ok(T.call("POST", f"/api/classes/{CID}/assign", {"gameId": GID})[0] == 200, "assigns a game to the class")
-ok(T.call("POST", f"/api/classes/{CID}/assign", {"gameId": "0000000000000000"})[0] == 404, "cannot assign a game that does not exist")
+def ev(q, correct, ms=8000, hints=0):
+    return {"qid": q["id"], "concept": q["conceptId"], "correct": correct, "difficulty": q["difficulty"], "ms": ms, "hints": hints, "kind": "test", "chapter": "ch1"}
 
-print("other teacher is locked out")
-T2 = Client()
-T2.call("POST", "/api/teacher/register", {"email": "other@school.org", "name": "Other", "password": "longenough2"})
-ok(T2.call("GET", f"/api/classes/{CID}/report?game={GID}")[0] == 404, "cannot read another teacher's report")
-ok(T2.call("DELETE", f"/api/classes/{CID}")[0] == 404, "cannot delete another teacher's class")
-ok(T2.call("POST", f"/api/classes/{CID}/assign", {"gameId": GID})[0] == 404, "cannot assign into another teacher's class")
-ok(T2.call("GET", "/api/classes")[1] == [], "sees only their own classes")
 
-print("students")
-S1, S2 = Client(), Client()
-ok(S1.call("POST", "/api/join", {"code": "ZZZZZZ", "nickname": "Mia"})[0] == 404, "unknown code is refused")
-ok(S1.call("POST", "/api/join", {"code": CODE, "nickname": "<b>"})[0] == 400, "unsafe nickname is refused")
-s, d = S1.call("POST", "/api/join", {"code": CODE.lower(), "nickname": "Mia"})
-ok(s == 200 and d["games"][0]["id"] == GID and d["className"] == "Grade 9 Biology", "joins with the code (any case) and sees assigned games")
-S1.token = d["token"]
-ok(S2.call("POST", "/api/join", {"code": CODE, "nickname": "mia"})[0] == 409, "nickname taken (case-insensitive)")
-ok(Client().call("POST", "/api/join", {"code": CODE, "nickname": "Mia", "token": d["token"]})[0] == 200, "same device can rejoin with its token")
-s, d2 = S2.call("POST", "/api/join", {"code": CODE, "nickname": "Leo"})
-S2.token = d2["token"]
+print("accounts")
+A = Client()
+ok(A.call("POST", "/api/register", {"username": "a b", "password": "longenough1"})[0] == 400, "rejects an invalid username")
+ok(A.call("POST", "/api/register", {"username": "alex_9", "password": "short"})[0] == 400, "rejects a short password")
+s, d = A.call("POST", "/api/register", {"username": "Alex_9", "password": "longenough1", "gender": "f"})
+ok(s == 200 and A.cookie and d["user"]["gender"] == "f", "registers, signs in, remembers the ranger choice")
+ok(db.q("SELECT pw_hash FROM users", one=True)["pw_hash"].startswith("scrypt$"), "password is stored hashed")
+ok(Client().call("POST", "/api/register", {"username": "alex_9", "password": "longenough1"})[0] == 409, "duplicate username (any case) is refused")
+ok(A.call("GET", "/api/me")[1]["user"]["username"] == "Alex_9", "the session cookie keeps the student logged in")
+ok(Client().call("POST", "/api/login", {"username": "alex_9", "password": "wrongpass1"})[0] == 401, "wrong password is refused")
+ok(Client().call("GET", "/api/games")[0] == 401, "private data needs a login")
+A.call("POST", "/api/profile", {"gender": "m"})
+ok(A.call("GET", "/api/me")[1]["user"]["gender"] == "m", "ranger choice can be changed")
 
-print("events + progress")
-ev = lambda q, c, ok_: {"qid": q, "concept": c, "correct": ok_, "kind": "obstacle", "chapter": "ch1"}
-ok(Client().call("POST", "/api/events", {"gameId": GID, "events": []})[0] == 401, "events need a student token")
-ok(S1.call("POST", "/api/events", {"gameId": "ffffffffffffffff", "events": [ev("q1", "c1", True)]})[0] == 403, "events for an unassigned game are refused")
-ok(S1.call("POST", "/api/events", {"gameId": GID, "events": [ev("q1", "c1", True), ev("q2", "c2", False), ev("q2", "c2", False)]})[1]["saved"] == 3, "saves answers")
-S2.call("POST", "/api/events", {"gameId": GID, "events": [ev("q1", "c1", False), ev("q2", "c2", False)]})
-S1.call("POST", "/api/progress", {"gameId": GID, "chapterIdx": 1, "score": 120, "finished": True})
-S1.call("POST", "/api/progress", {"gameId": GID, "chapterIdx": 0, "score": 50})
-ok(S1.call("GET", f"/api/progress?game={GID}")[1]["progress"] == {"chapter": 1, "score": 120, "finished": True}, "progress only moves forward (no regress)")
-ok(S1.call("GET", "/api/student/games")[1]["games"][0]["progress"]["finished"] is True, "student sees their own progress")
+print("privacy between students")
+B = Client()
+B.call("POST", "/api/register", {"username": "bella", "password": "longenough2"})
+uid_a = db.q("SELECT id FROM users WHERE username='Alex_9'", one=True)["id"]
+db.add_game("aaaa1111bbbb2222", uid_a, "Alex's private game")
+(pipeline.SCRIPTS / "aaaa1111bbbb2222.json").write_text(json.dumps({"title": "Alex's private game", "chapters": [], "finalBoss": {}}), encoding="utf-8")
+ok(A.call("GET", "/api/scripts/aaaa1111bbbb2222")[0] == 200, "owner can open their game")
+ok(B.call("GET", "/api/scripts/aaaa1111bbbb2222")[0] == 404, "another student cannot open it")
+ok(B.call("POST", "/api/events", {"gameId": "aaaa1111bbbb2222", "events": [ev(QS[0], True)]})[0] == 403, "cannot send answers into someone else's game")
+ok(B.call("POST", "/api/progress", {"gameId": "aaaa1111bbbb2222", "chapterIdx": 1})[0] == 403, "cannot write progress into someone else's game")
+ok(B.call("DELETE", "/api/games/aaaa1111bbbb2222")[0] == 404, "cannot delete it")
+ok([g["id"] for g in B.call("GET", "/api/games")[1]] == ["starter"], "sees only the shared starter game")
+ok(A.call("GET", "/api/jobs/anything")[0] == 404, "unknown build jobs are hidden")
 
-print("teacher report")
-s, rep = T.call("GET", f"/api/classes/{CID}/report?game={GID}")
-ok(s == 200 and rep["summary"]["students"] == 2 and rep["summary"]["finished"] == 1, "summary counts students and finishers")
-ok(rep["concepts"][0]["name"] == "Stroma" and rep["concepts"][0]["accuracy"] == 0, "weakest concept is named and ranked first")
-ok(rep["hardest"][0]["prompt"] == "Where?" and rep["hardest"][0]["answer"] == "Y", "hardest question shows the right answer")
-ok({x["nickname"]: x["answered"] for x in rep["students"]} == {"Leo": 2, "Mia": 3}, "per-student answer counts")
+print("mastery + performance tracking")
+for q_ in QS[:6]:
+    A.call("POST", "/api/events", {"gameId": "starter", "events": [ev(q_, True)]})
+m = {r["concept"]: r["m"] for r in db.mastery_rows(uid_a, "starter")}
+ok(all(v > 0.3 for v in m.values()) and len(m) >= 2, "correct answers raise mastery for the concepts asked")
+st = A.call("GET", "/api/stats")[1]
+ok(st["answers"] == 6 and st["accuracy"] == 100 and st["pace"] == 8.0, "accuracy and pace are tracked")
+ok(B.call("GET", "/api/stats")[1]["answers"] == 0, "the other student's record is separate")
 
-print("limits + cleanup")
+print("the game adapts to the student")
+a0 = A.call("GET", "/api/adapt?game=starter")[1]
+ok(a0["difficulty"] == 3 and "still learning" in a0["why"], "starts at the middle setting while data is thin")
+A.call("POST", "/api/events", {"gameId": "starter", "events": [ev(q_, True) for q_ in QS[6:20]]})
+a1 = A.call("GET", "/api/adapt?game=starter")[1]
+ok(a1["difficulty"] == 4 and a1["maxHearts"] == 4 and a1["bossRatioDelta"] > 0, "strong accuracy raises difficulty (fewer hearts, stricter bosses)")
+ok(A.call("GET", "/api/adapt?game=starter")[1]["difficulty"] == 4, "asking again does not keep climbing")
+A.call("POST", "/api/events", {"gameId": "starter", "events": [ev(q_, False, hints=1) for q_ in QS[0:14]]})
+a2 = A.call("GET", "/api/adapt?game=starter")[1]
+ok(a2["difficulty"] == 3, "a run of mistakes lowers it again")
+ok(a2["practice"] and set(a2["practice"]) <= {q_["id"] for q_ in QS}, "missed questions are queued for practice")
+ok(any(w["mastery"] < 0.55 for w in a2["weak"]), "weak topics are named with their mastery")
+ok(B.call("GET", "/api/adapt?game=starter")[1]["difficulty"] == 3, "the other student's setup is untouched")
+
+print("roadmap")
+rm = A.call("GET", "/api/roadmap")[1]
+g = rm["games"][0]
+ok(g["id"] == "starter" and len(g["nodes"]) == 3 and g["nodes"][0]["status"] == "current" and g["nodes"][1]["status"] == "locked", "chapters are unlocked in order")
+A.call("POST", "/api/progress", {"gameId": "starter", "chapterIdx": 1, "score": 300})
+g = A.call("GET", "/api/roadmap")[1]["games"][0]
+ok(g["nodes"][0]["status"] in ("done", "review", "mastered") and g["nodes"][1]["status"] == "current", "finishing a chapter moves the path forward")
+ok(g["nodes"][0]["status"] == "review" or g["nodes"][0]["mastery"] is not None, "chapter mastery is shown")
+ok(any(n["kind"] in ("continue", "practice", "review") for n in A.call("GET", "/api/roadmap")[1]["next"]), "recommendations are generated")
+ok(A.call("GET", "/api/roadmap")[1]["achievements"][1]["earned"], "achievements update")
+
+print("uploads + limits")
+ok(Client().call("POST", "/api/jobs", {"text": "x" * 500})[0] == 401, "uploading needs a login")
+ok(A.call("POST", "/api/jobs", {})[0] == 400, "an empty upload is refused")
+for i in range(config.MAX_GAMES_PER_DAY):
+    db.add_game(f"fill{i}aaaa", uid_a, "x")
+ok(A.call("POST", "/api/jobs", {"text": "word " * 200})[0] == 429, "the daily limit protects the free AI quota")
 for i in range(11):
-    last = Client().call("POST", "/api/teacher/login", {"email": "rao@school.org", "password": "nope" + str(i)})[0]
+    last = Client().call("POST", "/api/login", {"username": "alex_9", "password": "nope" + str(i)})[0]
 ok(last == 429, "repeated wrong passwords are rate-limited")
-ok(T.call("POST", "/api/teacher/logout")[0] == 200 and T.call("GET", "/api/me")[1]["teacher"] is None, "logout ends the session")
-T.cookie = None; api._hits.clear()
-T.call("POST", "/api/teacher/login", {"email": "rao@school.org", "password": "longenough1"})
-ok(T.call("DELETE", f"/api/classes/{CID}")[0] == 200 and db.q("SELECT COUNT(*) n FROM students", one=True)["n"] == 0, "deleting a class removes its students and answers")
+api._hits.clear()
 bad = http.client.HTTPConnection("127.0.0.1", PORT)
-bad.request("POST", "/api/join", "{}", {"Content-Type": "text/plain"})
-ok(bad.getresponse().status == 415, "non-JSON POST is refused (blocks cross-site form posts)")
+bad.request("POST", "/api/login", "{}", {"Content-Type": "text/plain"})
+ok(bad.getresponse().status == 415, "non-JSON POST is refused")
+
+print("logout + delete account")
+ok(A.call("POST", "/api/logout")[0] == 200 and A.call("GET", "/api/me")[1]["user"] is None, "logout ends the session")
+s, _ = A.call("POST", "/api/login", {"username": "alex_9", "password": "longenough1"})
+ok(s == 200, "logging back in works")
+ok(A.call("DELETE", "/api/account")[0] == 200 and db.q("SELECT COUNT(*) n FROM events", one=True)["n"] == 0, "deleting the account removes the student's answers")
+ok(not (pipeline.SCRIPTS / "aaaa1111bbbb2222.json").exists(), "...and their private games")
 print("\nPLATFORM OK")

@@ -3,7 +3,7 @@
 Last updated: 2026-10-05. "Verified" means a test or a live run actually executed it. Nothing here is marked done without that.
 
 ## Summary
-The **content to game to events** half of the closed loop works. The **adaptive** half (knowledge graph, student model, mastery, planner, next-experience) is **not built yet**. Today every student plays the same chapters in the same order; their answers are recorded and shown to the teacher, but they do not change what the game does next.
+ARCANA is a **student-only, single-player** product. Content to game to events to mastery to adapted setup works: each student's answers update a per-topic mastery estimate, which sets difficulty, teaching style and a practice station for the next chapter, and feeds an interactive roadmap. Still **not built**: knowledge graph and prerequisites, retrieval (RAG), and a planner that generates new missions per student. Adaptation is rule-based and deterministic, not learned.
 
 ## Status against the master specification
 
@@ -16,28 +16,28 @@ The **content to game to events** half of the closed loop works. The **adaptive*
 | Embeddings, vector search, RAG | NOT STARTED | The whole document (up to a size limit) is sent to the model instead. Free plans cap this (Groq about 18k characters). |
 | Concept extraction | DONE, verified live once | Flat list with importance and complexity. No relationships. |
 | Knowledge graph / prerequisites | NOT STARTED | |
-| Learning graph and learning path | NOT STARTED | Chapter order is the order the AI planned. |
-| Student model | PARTIAL | Per-student answers and progress are stored. No model beyond raw counts. |
-| Mastery engine | NOT STARTED | The teacher report shows per-concept accuracy, which is not a mastery estimate. |
-| Difficulty adaptation | NOT STARTED | Questions carry a 1-3 difficulty; nothing adapts to it. |
-| Misconception / remediation | NOT STARTED | After the game, missed questions are shown for revision. No live remediation. |
-| Planner (what next) | NOT STARTED | |
+| Learning graph and learning path | PARTIAL | Roadmap shows the chapter path with status and mastery. Order is the AI's chapter order; no prerequisites. |
+| Student model | DONE, verified | Per user and game: answers (correctness, difficulty, time, hints), progress, per-concept mastery, stored difficulty. `test_platform.py` |
+| Mastery engine | DONE, verified | `server/mastery.py`: difficulty-weighted updates, hint penalty, streak bonus, forgetting toward 0.5. `test_mastery.py` (23 checks) |
+| Difficulty adaptation | DONE, verified | Level 1-5, moves one step per 12 answers; sets hearts, bosses, rival, hints, explanations. Rule-based. Not yet play-tested by a real student. |
+| Misconception / remediation | PARTIAL | A practice station replays recently missed questions of weak topics before the chapter boss. No misconception labels. |
+| Planner (what next) | PARTIAL | Roadmap recommendations (continue, review, practise, upload). Does not generate new content per student. |
 | Lessons, questions, missions, bosses | DONE, verified | AI-written, then re-answered by a second pass; invalid ones dropped. Live run: 1 document, 2 chapters. |
 | Progressive hints | PARTIAL | One static hint per obstacle |
 | Game specification contract | PARTIAL | `GameScript` v1 works but is not yet a formal JSON Schema in `shared/` |
-| Game events contract | PARTIAL | Only answer events and chapter progress are sent |
+| Game events contract | PARTIAL | Answer events carry difficulty, time and hints; chapter progress. No mission start/fail events. |
 | Game engine | DONE, bot-tested | Movement, fights, arcade levels, five worlds. Physical keyboard and phones not hand-tested. |
 | AI provider abstraction and fallback | DONE, verified | `server/llm.py`: Claude, Gemini, Groq, OpenRouter and others, cooldowns, failover. Tested with local stand-ins and one live run. |
 | Retry / backoff | PARTIAL | Cooldown and failover exist; no exponential backoff per call |
 | Structured output validation | DONE | Schema check, repair retry, then failover; question integrity checks |
-| Frontend (game UI) | DONE | Title, character select, HUD, panels. No learner dashboard (mastery, path). |
-| Teacher portal | DONE, verified | Accounts, classes, join codes, assignments, reports (`test_platform.py`, browser check) |
+| Frontend | DONE, browser-checked | Dashboard (login, stats, adaptive setup, roadmap, upload, games) and game. Keyboard and phone play not hand-tested. |
+| Teacher portal | REMOVED | By design: students only; the game is the teacher |
 | Backend | DONE, deviation | Standard-library HTTP server and SQLite, not FastAPI and PostgreSQL (see architecture.md) |
-| Authentication | DONE, verified | Teachers: scrypt passwords, session cookie. Students: nickname plus random token. |
+| Authentication | DONE, verified | Username and password (scrypt), 30-day HttpOnly session cookie, logout, delete account. No password reset (no email). |
 | Observability | PARTIAL | Per-job logs and token tallies. No structured request logging. |
 | Security | PARTIAL | Hashing, rate limits, JSON-only POSTs, escaped output, key in `.env`. No CORS (same origin only). |
-| Tests | PARTIAL | 3 suites pass. No CI and no end-to-end test of the adaptive loop (it does not exist yet). |
-| Deployment | PREPARED, NOT DEPLOYED | `render.yaml`, `Dockerfile`. Free plan loses data on restart (see README). |
+| Tests | PARTIAL | 4 suites pass (mastery, platform incl. adaptation and roadmap, AI path, ingest). No CI; no automated browser test. |
+| Deployment | DEPLOYED | GitHub + Render (`render.yaml`, `Dockerfile`, `server/deploy_render.py`). Free plan loses data on restart (see README). |
 | Documentation | PARTIAL | README, this file, architecture.md, game-ai-contract.md |
 
 ## MVP checklist (spec section 65)
@@ -45,21 +45,21 @@ The **content to game to events** half of the closed loop works. The **adaptive*
 - [ ] Embed, retrieve, RAG
 - [x] Extract concepts
 - [ ] Build learning graph
-- [ ] Create student model, estimate mastery
-- [ ] Select next objective
+- [x] Create student model, estimate mastery
+- [x] Select next objective (roadmap recommendations)
 - [x] Generate lesson, question, mission
 - [x] Generate game specification, game consumes it
 - [x] Player completes challenge, game sends event
-- [ ] AI updates mastery
-- [ ] AI chooses next experience
+- [x] Mastery updated from play (deterministic, not AI)
+- [ ] AI chooses next experience (setup adapts per student; new content is not generated per student)
 
 ## Recommended order for the next work
-1. **Mastery engine** (deterministic, fully testable): per-student, per-concept mastery from the events already stored (correctness, difficulty, recency, hints). Pure Python, unit-tested.
-2. **Prerequisite edges**: ask the model for `prerequisite_of` between the extracted concepts, validate it is acyclic, store it as the knowledge graph.
-3. **Planner**: from mastery plus graph, choose the next concept and difficulty; generate a short remedial or practice mission for a weak concept and play it before moving on.
-4. **Formal contracts** in `shared/schemas/` (GameScript, GameEvent, Mission) with validators used by both sides.
-5. **Retrieval** (embeddings behind a provider interface) so long documents work on small-context providers.
+1. **Persistent storage**: Render free plan wipes SQLite on restart. Move to managed Postgres or a paid disk before real users.
+2. **Prerequisite edges** between concepts (model-proposed, validated acyclic) feeding the roadmap.
+3. **Planner**: generate a short remedial mission for a weak concept instead of replaying old questions.
+4. **Formal contracts** in `shared/schemas/` with validators used by both sides.
+5. **Retrieval** (embeddings) so long documents work on small-context providers.
+6. Password reset (needs email) and CI with a browser test.
 
 ## Blockers
-- Deployment and publishing need the owner's GitHub and Render logins (not available to the assistant).
 - Render's free plan cannot keep the database between restarts.

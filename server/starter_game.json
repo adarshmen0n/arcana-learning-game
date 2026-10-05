@@ -1,0 +1,798 @@
+{
+ "schemaVersion": 1,
+ "projectId": "starter",
+ "title": "Photosynthesis",
+ "audience": {
+  "level": "general",
+  "modes": [
+   "student",
+   "teacher"
+  ]
+ },
+ "chapters": [
+  {
+   "id": "ch1",
+   "title": "Light Reactions",
+   "goal": "Explain how light energy becomes chemical energy",
+   "theme": {
+    "background": "crystal_cave"
+   },
+   "concepts": [
+    {
+     "id": "c1",
+     "name": "Chlorophyll"
+    },
+    {
+     "id": "c2",
+     "name": "Thylakoids (where light reactions happen)"
+    },
+    {
+     "id": "c3",
+     "name": "Products of light reactions"
+    }
+   ],
+   "scenes": [
+    {
+     "type": "npc",
+     "id": "ch1s1",
+     "conceptIds": [
+      "c1"
+     ],
+     "npc": {
+      "name": "Professor Lumen",
+      "look": "lumen"
+     },
+     "dialogue": [
+      {
+       "text": "Welcome, traveller! Plants make their own food using sunlight. This is called photosynthesis.",
+       "highlight": [
+        "photosynthesis"
+       ]
+      },
+      {
+       "text": "The green pigment chlorophyll captures the light. Think of it as a solar panel inside every leaf.",
+       "highlight": [
+        "chlorophyll"
+       ]
+      },
+      {
+       "text": "Chlorophyll mostly absorbs red and blue light and reflects green, which is why leaves look green.",
+       "highlight": [
+        "red and blue",
+        "green"
+       ]
+      }
+     ],
+     "teacherNote": "Ask students to predict why plants look green before revealing the answer."
+    },
+    {
+     "type": "obstacle",
+     "id": "ch1s2",
+     "question": {
+      "id": "q1",
+      "conceptId": "c1",
+      "prompt": "Which pigment absorbs light for photosynthesis?",
+      "options": [
+       "Chlorophyll",
+       "Keratin",
+       "Melanin",
+       "Insulin"
+      ],
+      "correctIndex": 0,
+      "explanation": "Chlorophyll absorbs mainly red and blue light.",
+      "difficulty": 1
+     },
+     "hint": "Re-read the Professor's words: the green pigment."
+    },
+    {
+     "type": "npc",
+     "id": "ch1s3",
+     "conceptIds": [
+      "c2",
+      "c3"
+     ],
+     "npc": {
+      "name": "Archivist Thyla",
+      "look": "thyla"
+     },
+     "dialogue": [
+      {
+       "text": "The light reactions happen inside the thylakoid membranes of the chloroplast. They are stacked like pancakes into grana.",
+       "highlight": [
+        "thylakoid",
+        "grana"
+       ]
+      },
+      {
+       "text": "Light splits water molecules. This releases oxygen as a by-product.",
+       "highlight": [
+        "splits water",
+        "oxygen"
+       ]
+      },
+      {
+       "text": "The energy is stored in two carrier molecules: ATP and NADPH. They travel on to the next stage!",
+       "highlight": [
+        "ATP",
+        "NADPH"
+       ]
+      }
+     ],
+     "teacherNote": "Draw the chloroplast on the board and label thylakoid, grana and stroma."
+    },
+    {
+     "type": "obstacle",
+     "id": "ch1s4",
+     "question": {
+      "id": "q2",
+      "conceptId": "c2",
+      "prompt": "Where in the chloroplast do the light reactions occur?",
+      "options": [
+       "Thylakoid membranes",
+       "Stroma",
+       "Nucleus",
+       "Cell wall"
+      ],
+      "correctIndex": 0,
+      "explanation": "Light reactions occur on the thylakoid membranes.",
+      "difficulty": 1
+     },
+     "hint": "Think pancakes: stacked membranes called grana."
+    },
+    {
+     "type": "match",
+     "id": "ch1s5",
+     "opponent": {
+      "name": "Rival Ranger",
+      "kind": "rival",
+      "skill": 0.6
+     },
+     "questions": [
+      {
+       "id": "q3",
+       "conceptId": "c1",
+       "prompt": "Chlorophyll mainly absorbs which colours of light?",
+       "options": [
+        "Red and blue",
+        "Green only",
+        "Yellow only",
+        "All colours equally"
+       ],
+       "correctIndex": 0,
+       "explanation": "Green is reflected, which is why leaves look green.",
+       "difficulty": 1
+      },
+      {
+       "id": "q4",
+       "conceptId": "c3",
+       "prompt": "Which gas is released as a by-product of the light reactions?",
+       "options": [
+        "Oxygen",
+        "Carbon dioxide",
+        "Nitrogen",
+        "Hydrogen"
+       ],
+       "correctIndex": 0,
+       "explanation": "Oxygen comes from the splitting of water.",
+       "difficulty": 1
+      },
+      {
+       "id": "q5",
+       "conceptId": "c3",
+       "prompt": "The oxygen released comes from the splitting of:",
+       "options": [
+        "Water",
+        "Carbon dioxide",
+        "Glucose",
+        "ATP"
+       ],
+       "correctIndex": 0,
+       "explanation": "Photolysis splits water molecules.",
+       "difficulty": 2
+      },
+      {
+       "id": "q6",
+       "conceptId": "c3",
+       "prompt": "Which molecules carry energy from the light reactions to the Calvin cycle?",
+       "options": [
+        "ATP and NADPH",
+        "DNA and RNA",
+        "Glucose and starch",
+        "O2 and CO2"
+       ],
+       "correctIndex": 0,
+       "explanation": "ATP and NADPH are the energy carriers.",
+       "difficulty": 2
+      },
+      {
+       "id": "q7",
+       "conceptId": "c1",
+       "prompt": "Why do most leaves look green?",
+       "options": [
+        "Chlorophyll reflects green light",
+        "Chlorophyll absorbs green light",
+        "Leaves have no pigment",
+        "Water is green"
+       ],
+       "correctIndex": 0,
+       "explanation": "Reflected light is what we see.",
+       "difficulty": 2
+      }
+     ]
+    },
+    {
+     "type": "mission",
+     "id": "ch1s6",
+     "conceptIds": [
+      "c3"
+     ],
+     "mission": {
+      "kind": "order",
+      "instruction": "Mission: put the steps of the light reactions in the correct order.",
+      "items": [
+       "Light hits chlorophyll",
+       "Water is split",
+       "Electrons move along the chain",
+       "ATP and NADPH are made"
+      ]
+     }
+    },
+    {
+     "type": "maze",
+     "id": "ch1s6b",
+     "title": "Maze Run",
+     "ghosts": 2,
+     "questions": [
+      {
+       "id": "q8",
+       "conceptId": "c1",
+       "prompt": "Which organelle contains chlorophyll?",
+       "options": [
+        "Chloroplast",
+        "Nucleus",
+        "Ribosome",
+        "Cell wall"
+       ],
+       "correctIndex": 0,
+       "explanation": "Chlorophyll sits inside chloroplasts.",
+       "difficulty": 1
+      },
+      {
+       "id": "q9",
+       "conceptId": "c3",
+       "prompt": "Splitting water in the light reactions releases:",
+       "options": [
+        "Oxygen, electrons and protons",
+        "Glucose",
+        "Nitrogen",
+        "Starch"
+       ],
+       "correctIndex": 0,
+       "explanation": "Photolysis gives O2, electrons and H+.",
+       "difficulty": 2
+      },
+      {
+       "id": "q10",
+       "conceptId": "c2",
+       "prompt": "The light reactions happen inside which organelle?",
+       "options": [
+        "Chloroplast",
+        "Mitochondrion",
+        "Golgi body",
+        "Lysosome"
+       ],
+       "correctIndex": 0,
+       "explanation": "Chloroplasts host photosynthesis.",
+       "difficulty": 1
+      }
+     ]
+    },
+    {
+     "type": "level_test",
+     "id": "ch1s7",
+     "passMark": 4,
+     "questions": [
+      {
+       "id": "q11",
+       "conceptId": "c2",
+       "prompt": "The light reactions need which energy source?",
+       "options": [
+        "Sunlight",
+        "Heat from soil",
+        "Glucose",
+        "Wind"
+       ],
+       "correctIndex": 0,
+       "explanation": "Light energy drives the process.",
+       "difficulty": 1
+      },
+      {
+       "id": "q12",
+       "conceptId": "c2",
+       "prompt": "Thylakoids are stacked into:",
+       "options": [
+        "Grana",
+        "Vacuoles",
+        "Ribosomes",
+        "Lysosomes"
+       ],
+       "correctIndex": 0,
+       "explanation": "A stack of thylakoids is a granum.",
+       "difficulty": 1
+      },
+      {
+       "id": "q13",
+       "conceptId": "c3",
+       "prompt": "Which molecule is split in the light reactions?",
+       "options": [
+        "Water",
+        "Glucose",
+        "Starch",
+        "Oxygen"
+       ],
+       "correctIndex": 0,
+       "explanation": "Water is split, releasing O2.",
+       "difficulty": 2
+      },
+      {
+       "id": "q14",
+       "conceptId": "c3",
+       "prompt": "ATP stands for:",
+       "options": [
+        "Adenosine triphosphate",
+        "Adenine tri-phenol",
+        "Atomic transfer protein",
+        "Active thylakoid pigment"
+       ],
+       "correctIndex": 0,
+       "explanation": "ATP is the cell's energy currency.",
+       "difficulty": 2
+      },
+      {
+       "id": "q15",
+       "conceptId": "c3",
+       "prompt": "Which is NOT a product of the light reactions?",
+       "options": [
+        "Glucose",
+        "ATP",
+        "NADPH",
+        "Oxygen"
+       ],
+       "correctIndex": 0,
+       "explanation": "Glucose is made later, in the Calvin cycle.",
+       "difficulty": 3
+      }
+     ]
+    },
+    {
+     "type": "mini_boss",
+     "id": "ch1s8",
+     "boss": {
+      "name": "Warlord Kragg",
+      "kind": "enforcer",
+      "fight": "martial"
+     },
+     "pool": "chapter",
+     "count": 6
+    }
+   ]
+  },
+  {
+   "id": "ch2",
+   "title": "The Calvin Cycle",
+   "goal": "Explain how CO2 is turned into sugar",
+   "theme": {
+    "background": "ancient_forest"
+   },
+   "concepts": [
+    {
+     "id": "c4",
+     "name": "Calvin cycle (stroma)"
+    },
+    {
+     "id": "c5",
+     "name": "Carbon fixation and RuBisCO"
+    },
+    {
+     "id": "c6",
+     "name": "Glucose and the overall equation"
+    }
+   ],
+   "scenes": [
+    {
+     "type": "npc",
+     "id": "ch2s1",
+     "conceptIds": [
+      "c4",
+      "c5"
+     ],
+     "npc": {
+      "name": "Ranger Stroma",
+      "look": "ranger"
+     },
+     "dialogue": [
+      {
+       "text": "Welcome to the stroma, the fluid inside the chloroplast. This is where the Calvin cycle runs.",
+       "highlight": [
+        "stroma",
+        "Calvin cycle"
+       ]
+      },
+      {
+       "text": "The cycle uses the ATP and NADPH from the light reactions. It does not need light directly, so it is also called the light-independent reactions.",
+       "highlight": [
+        "ATP",
+        "NADPH",
+        "light-independent"
+       ]
+      },
+      {
+       "text": "First, the enzyme RuBisCO fixes carbon dioxide from the air into an organic molecule.",
+       "highlight": [
+        "RuBisCO",
+        "carbon dioxide"
+       ]
+      }
+     ],
+     "teacherNote": "Contrast this with chapter 1: light reactions make energy carriers, the Calvin cycle spends them."
+    },
+    {
+     "type": "obstacle",
+     "id": "ch2s2",
+     "question": {
+      "id": "q16",
+      "conceptId": "c4",
+      "prompt": "Where does the Calvin cycle take place?",
+      "options": [
+       "Stroma",
+       "Thylakoid membrane",
+       "Mitochondria",
+       "Outside the cell"
+      ],
+      "correctIndex": 0,
+      "explanation": "The stroma is the fluid around the thylakoids.",
+      "difficulty": 1
+     },
+     "hint": "It's the fluid inside the chloroplast."
+    },
+    {
+     "type": "npc",
+     "id": "ch2s3",
+     "conceptIds": [
+      "c6"
+     ],
+     "npc": {
+      "name": "Sage Glucose",
+      "look": "sage"
+     },
+     "dialogue": [
+      {
+       "text": "The cycle builds sugar. Six carbon dioxide molecules fixed over time make one glucose.",
+       "highlight": [
+        "six",
+        "glucose"
+       ]
+      },
+      {
+       "text": "The overall equation: 6CO2 + 6H2O + light → C6H12O6 + 6O2.",
+       "highlight": [
+        "6CO2",
+        "C6H12O6"
+       ]
+      },
+      {
+       "text": "Extra glucose is stored in the plant as starch.",
+       "highlight": [
+        "starch"
+       ]
+      }
+     ],
+     "teacherNote": "Have students balance the equation themselves on paper."
+    },
+    {
+     "type": "obstacle",
+     "id": "ch2s4",
+     "question": {
+      "id": "q17",
+      "conceptId": "c6",
+      "prompt": "The Calvin cycle uses ATP and NADPH to make:",
+      "options": [
+       "Sugar from CO2",
+       "Oxygen from water",
+       "Chlorophyll",
+       "DNA"
+      ],
+      "correctIndex": 0,
+      "explanation": "It fixes CO2 into sugar.",
+      "difficulty": 1
+     },
+     "hint": "Think about what the whole process is for: food."
+    },
+    {
+     "type": "match",
+     "id": "ch2s5",
+     "opponent": {
+      "name": "Rival Ranger",
+      "kind": "rival",
+      "skill": 0.65
+     },
+     "questions": [
+      {
+       "id": "q18",
+       "conceptId": "c5",
+       "prompt": "Which enzyme fixes CO2 in the Calvin cycle?",
+       "options": [
+        "RuBisCO",
+        "Amylase",
+        "Pepsin",
+        "Lipase"
+       ],
+       "correctIndex": 0,
+       "explanation": "RuBisCO catalyses carbon fixation.",
+       "difficulty": 1
+      },
+      {
+       "id": "q19",
+       "conceptId": "c5",
+       "prompt": "Carbon enters the Calvin cycle as:",
+       "options": [
+        "CO2",
+        "O2",
+        "N2",
+        "H2"
+       ],
+       "correctIndex": 0,
+       "explanation": "CO2 from the air.",
+       "difficulty": 1
+      },
+      {
+       "id": "q20",
+       "conceptId": "c5",
+       "prompt": "The first stable product of carbon fixation is:",
+       "options": [
+        "3-PGA",
+        "Glucose",
+        "Pyruvate",
+        "Ethanol"
+       ],
+       "correctIndex": 0,
+       "explanation": "3-phosphoglycerate (3-PGA).",
+       "difficulty": 3
+      },
+      {
+       "id": "q21",
+       "conceptId": "c4",
+       "prompt": "Why is the Calvin cycle called light-independent?",
+       "options": [
+        "It uses stored ATP and NADPH, not light directly",
+        "It happens only at night",
+        "It needs no energy",
+        "It makes oxygen"
+       ],
+       "correctIndex": 0,
+       "explanation": "Light isn't used directly, but the cycle depends on the energy carriers.",
+       "difficulty": 2
+      },
+      {
+       "id": "q22",
+       "conceptId": "c6",
+       "prompt": "What is the main sugar produced?",
+       "options": [
+        "Glucose",
+        "Lactose",
+        "Cellulose only",
+        "Fat"
+       ],
+       "correctIndex": 0,
+       "explanation": "Glucose, C6H12O6.",
+       "difficulty": 1
+      }
+     ]
+    },
+    {
+     "type": "mission",
+     "id": "ch2s6",
+     "conceptIds": [
+      "c4",
+      "c5",
+      "c6"
+     ],
+     "mission": {
+      "kind": "match_pairs",
+      "instruction": "Mission: connect each term to its role.",
+      "pairs": [
+       [
+        "RuBisCO",
+        "Fixes CO2"
+       ],
+       [
+        "Stroma",
+        "Site of the Calvin cycle"
+       ],
+       [
+        "ATP",
+        "Energy carrier"
+       ],
+       [
+        "Glucose",
+        "Final sugar product"
+       ]
+      ]
+     }
+    },
+    {
+     "type": "shooter",
+     "id": "ch2s6b",
+     "title": "Invaders",
+     "questions": [
+      {
+       "id": "q23",
+       "conceptId": "c5",
+       "prompt": "Which molecule first accepts CO2 in the Calvin cycle?",
+       "options": [
+        "RuBP",
+        "Glucose",
+        "ATP",
+        "Pyruvate"
+       ],
+       "correctIndex": 0,
+       "explanation": "RuBisCO attaches CO2 to RuBP.",
+       "difficulty": 2
+      },
+      {
+       "id": "q24",
+       "conceptId": "c4",
+       "prompt": "How many turns of the Calvin cycle make one glucose?",
+       "options": [
+        "6",
+        "1",
+        "3",
+        "12"
+       ],
+       "correctIndex": 0,
+       "explanation": "Six CO2 are fixed for six carbons.",
+       "difficulty": 2
+      },
+      {
+       "id": "q25",
+       "conceptId": "c6",
+       "prompt": "What is the main job of the Calvin cycle?",
+       "options": [
+        "Build sugar from CO2",
+        "Split water",
+        "Absorb light",
+        "Release oxygen"
+       ],
+       "correctIndex": 0,
+       "explanation": "It uses ATP and NADPH to make sugar.",
+       "difficulty": 1
+      }
+     ]
+    },
+    {
+     "type": "level_test",
+     "id": "ch2s7",
+     "passMark": 4,
+     "questions": [
+      {
+       "id": "q26",
+       "conceptId": "c6",
+       "prompt": "Which is the correct overall equation?",
+       "options": [
+        "6CO2 + 6H2O → C6H12O6 + 6O2",
+        "C6H12O6 + 6O2 → 6CO2 + 6H2O",
+        "6O2 + 6H2O → C6H12O6 + 6CO2",
+        "CO2 + O2 → H2O"
+       ],
+       "correctIndex": 0,
+       "explanation": "Photosynthesis builds glucose and releases oxygen.",
+       "difficulty": 2
+      },
+      {
+       "id": "q27",
+       "conceptId": "c4",
+       "prompt": "Another name for the Calvin cycle is:",
+       "options": [
+        "Light-independent reactions",
+        "Light reactions",
+        "Glycolysis",
+        "Krebs cycle"
+       ],
+       "correctIndex": 0,
+       "explanation": "It doesn't use light directly.",
+       "difficulty": 1
+      },
+      {
+       "id": "q28",
+       "conceptId": "c6",
+       "prompt": "How many CO2 molecules are fixed to make one glucose?",
+       "options": [
+        "6",
+        "2",
+        "12",
+        "1"
+       ],
+       "correctIndex": 0,
+       "explanation": "Glucose has 6 carbon atoms.",
+       "difficulty": 2
+      },
+      {
+       "id": "q29",
+       "conceptId": "c6",
+       "prompt": "Plants store extra glucose as:",
+       "options": [
+        "Starch",
+        "Keratin",
+        "Lactose",
+        "Cholesterol"
+       ],
+       "correctIndex": 0,
+       "explanation": "Starch is the plant storage carbohydrate.",
+       "difficulty": 1
+      },
+      {
+       "id": "q30",
+       "conceptId": "c3",
+       "prompt": "Which stage directly produces oxygen?",
+       "options": [
+        "Light reactions",
+        "Calvin cycle",
+        "Glycolysis",
+        "Fermentation"
+       ],
+       "correctIndex": 0,
+       "explanation": "Oxygen comes from splitting water in the light reactions.",
+       "difficulty": 2
+      }
+     ]
+    },
+    {
+     "type": "mini_boss",
+     "id": "ch2s8",
+     "boss": {
+      "name": "Siege Titan",
+      "kind": "colossus",
+      "fight": "martial"
+     },
+     "pool": "chapter",
+     "count": 6
+    }
+   ]
+  }
+ ],
+ "finalBoss": {
+  "title": "The Final Boss",
+  "goal": "Defeat the Sorcerer using everything you have learned",
+  "theme": {
+   "background": "ember_citadel"
+  },
+  "boss": {
+   "name": "Malachar the Sorcerer",
+   "kind": "overlord",
+   "fight": "magic"
+  },
+  "count": 25,
+  "passMarkRatio": 0.7,
+  "extraQuestions": [
+   {
+    "id": "q31",
+    "conceptId": "c6",
+    "prompt": "Which two raw materials do plants need for photosynthesis?",
+    "options": [
+     "Water and carbon dioxide",
+     "Oxygen and glucose",
+     "Nitrogen and starch",
+     "Salt and sunlight"
+    ],
+    "correctIndex": 0,
+    "explanation": "CO2 and water are converted into glucose and oxygen.",
+    "difficulty": 1
+   }
+  ]
+ },
+ "source": {
+  "filename": "built-in",
+  "words": 0,
+  "mode": "starter"
+ }
+}

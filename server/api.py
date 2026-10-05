@@ -1,5 +1,5 @@
-"""HTTP API: teachers, classes, students, assignments, progress, reports, and the upload jobs.
-Students never give an email or password: they join with a class code and a nickname, and get a random token."""
+"""HTTP API for ARCANA. Students are the only users: each has a private account, private games, and a personal
+performance record that drives how the game adapts to them. No teachers, no classes."""
 import base64
 import collections
 import json
@@ -10,9 +10,9 @@ import config
 import db
 import llm
 import pipeline
+import roadmap
 
-EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
-NICK = re.compile(r"^[\w \-]{2,20}$", re.U)
+USER = re.compile(r"^[A-Za-z0-9_.\-]{3,20}$")
 _hits = collections.defaultdict(collections.deque)
 
 
@@ -31,68 +31,67 @@ def limit(key, n, per):
     dq.append(now)
 
 
+def clean(s, n):
+    return re.sub(r"\s+", " ", str(s or "")).strip()[:n]
+
+
 class Req:
     def __init__(self, method, path, query, body, headers, ip):
-        self.method, self.path, self.query, self.body, self.headers, self.ip = method, path, query, body or {}, headers, ip
+        self.method, self.path, self.query, self.body, self.headers, self.ip = method, path, query, body if isinstance(body, dict) else {}, headers, ip
         self.cookies = {}
         for part in (headers.get("Cookie") or "").split(";"):
             if "=" in part:
                 k, v = part.strip().split("=", 1)
                 self.cookies[k] = v
         self.set_cookie = None
-        self._teacher = False
+        self._user = False
 
     @property
-    def teacher(self):
-        if self._teacher is False:
-            self._teacher = db.teacher_for(self.cookies.get("arcana_session"))
-        return self._teacher
+    def user(self):
+        if self._user is False:
+            self._user = db.user_for(self.cookies.get("arcana_session"))
+        return self._user
 
-    def need_teacher(self):
-        if not self.teacher:
-            raise Err(401, "Please log in as a teacher.")
-        return self.teacher
-
-    def student(self):
-        s = db.student_for(self.headers.get("X-Student-Token") or (self.body.get("token") if isinstance(self.body, dict) else None))
-        if not s:
-            raise Err(401, "Join a class first.")
-        return s
+    def need(self):
+        if not self.user:
+            raise Err(401, "Please log in.")
+        return self.user
 
     def cookie(self, token, clear=False):
         flags = "HttpOnly; SameSite=Lax; Path=/" + ("; Secure" if config.SECURE_COOKIE else "")
         self.set_cookie = f"arcana_session={'' if clear else token}; {flags}; Max-Age={0 if clear else db.SESSION_DAYS * 86400}"
 
+    def q1(self, name):
+        return clean(self.query.get(name, [""])[0], 60)
 
-def clean(s, n):
-    return re.sub(r"\s+", " ", str(s or "")).strip()[:n]
+
+def public_user(u):
+    return {"username": u["username"], "gender": u["gender"]} if u else None
 
 
-# ----------------------------------------------------------------------------- teachers
+# ----------------------------------------------------------------------------- account
 def register(r):
-    limit(("reg", r.ip), 10, 3600)
-    email, name, pw = clean(r.body.get("email"), 254), clean(r.body.get("name"), 60), str(r.body.get("password") or "")
-    if not EMAIL.match(email):
-        raise Err(400, "Enter a valid email address.")
-    if not name:
-        raise Err(400, "Enter your name.")
+    limit(("reg", r.ip), 12, 3600)
+    name, pw = clean(r.body.get("username"), 20), str(r.body.get("password") or "")
+    if not USER.match(name):
+        raise Err(400, "Username: 3 to 20 letters, numbers, dots, dashes or underscores.")
     if not (8 <= len(pw) <= 200):
         raise Err(400, "Use a password of at least 8 characters.")
-    tid = db.create_teacher(email, name, pw)
-    if not tid:
-        raise Err(409, "An account with this email already exists. Log in instead.")
-    r.cookie(db.new_session(tid))
-    return {"teacher": {"name": name, "email": email.lower()}}
+    uid = db.create_user(name, pw, r.body.get("gender"))
+    if not uid:
+        raise Err(409, "That username is taken. Pick another one.")
+    r.cookie(db.new_session(uid))
+    return {"user": public_user(db.q("SELECT * FROM users WHERE id=?", (uid,), one=True))}
 
 
 def login(r):
-    email = clean(r.body.get("email"), 254).lower()
-    limit(("login", r.ip, email), 10, 600)
-    t = db.login(email, str(r.body.get("password") or ""))
-    if not t:
-        raise Err(401, "Wrong email or password.")
-    r.cookie(db.new_session(t["id"]))
-    return {"teacher": {"name": t["name"], "email": t["email"]}}
+    name = clean(r.body.get("username"), 20).lower()
+    limit(("login", r.ip, name), 10, 600)
+    u = db.login(name, str(r.body.get("password") or ""))
+    if not u:
+        raise Err(401, "Wrong username or password.")
+    r.cookie(db.new_session(u["id"]))
+    return {"user": public_user(u)}
 
 
 def logout(r):
@@ -103,193 +102,81 @@ def logout(r):
 
 
 def me(r):
-    t = r.teacher
-    return {"teacher": {"name": t["name"], "email": t["email"]} if t else None, "hosted": config.HOSTED}
+    return {"user": public_user(r.user)}
 
 
-# ----------------------------------------------------------------------------- classes + games (teacher)
-def classes_list(r):
-    t = r.need_teacher()
-    out = []
-    for c in db.q("SELECT * FROM classes WHERE teacher_id=? ORDER BY created DESC", (t["id"],)):
-        n = db.q("SELECT COUNT(*) n FROM students WHERE class_id=?", (c["id"],), one=True)["n"]
-        games = [{"id": g["id"], "title": g["title"]} for g in db.q("SELECT g.id,g.title FROM assignments a JOIN games g ON g.id=a.game_id WHERE a.class_id=? ORDER BY a.created", (c["id"],))]
-        out.append({"id": c["id"], "name": c["name"], "code": c["code"], "students": n, "games": games})
-    return out
-
-
-def class_create(r):
-    t = r.need_teacher()
-    name = clean(r.body.get("name"), 60)
-    if not name:
-        raise Err(400, "Give the class a name.")
-    if db.q("SELECT COUNT(*) n FROM classes WHERE teacher_id=?", (t["id"],), one=True)["n"] >= 50:
-        raise Err(400, "You have reached the limit of 50 classes.")
-    cid = db.new_class(t["id"], name)
-    return {"id": cid}
-
-
-def own_class(r, cid):
-    c = db.class_owned(r.need_teacher()["id"], int(cid))
-    if not c:
-        raise Err(404, "Class not found.")
-    return c
-
-
-def class_delete(r, cid):
-    own_class(r, cid)
-    db.run("DELETE FROM classes WHERE id=?", (int(cid),))
+def profile_set(r):
+    u = r.need()
+    g = r.body.get("gender")
+    if g in ("m", "f"):
+        db.run("UPDATE users SET gender=? WHERE id=?", (g, u["id"]))
     return {"ok": True}
 
 
-def teacher_games(r):
-    t = r.need_teacher()
-    return [{"id": g["id"], "title": g["title"], "created": g["created"]} for g in db.q("SELECT * FROM games WHERE teacher_id=? ORDER BY created DESC", (t["id"],))]
+def account_delete(r):
+    u = r.need()
+    for g in db.q("SELECT id FROM games WHERE owner_id=?", (u["id"],)):
+        f = pipeline.SCRIPTS / (re.sub(r"[^a-z0-9]", "", g["id"].lower()) + ".json")
+        if f.exists():
+            f.unlink()
+    db.run("DELETE FROM users WHERE id=?", (u["id"],))
+    r.cookie("", clear=True)
+    return {"ok": True}
+
+
+# ----------------------------------------------------------------------------- games
+def games_list(r):
+    u = r.need()
+    out = []
+    for g in db.q("SELECT * FROM games WHERE owner_id IS NULL OR owner_id=? ORDER BY (owner_id IS NULL) DESC, created DESC", (u["id"],)):
+        p = db.q("SELECT * FROM progress WHERE user_id=? AND game_id=?", (u["id"], g["id"]), one=True)
+        out.append({"id": g["id"], "title": g["title"], "starter": g["owner_id"] is None, "created": g["created"],
+                    "progress": {"chapter": p["chapter_idx"], "score": p["score"], "finished": bool(p["finished"])} if p else None})
+    return out
 
 
 def game_delete(r, gid):
-    t = r.need_teacher()
-    g = db.q("SELECT * FROM games WHERE id=? AND teacher_id=?", (gid, t["id"]), one=True)
-    if not g:
+    u = r.need()
+    if not db.q("SELECT 1 FROM games WHERE id=? AND owner_id=?", (gid, u["id"]), one=True):
         raise Err(404, "Game not found.")
     db.run("DELETE FROM games WHERE id=?", (gid,))
+    db.run("DELETE FROM progress WHERE user_id=? AND game_id=?", (u["id"], gid))
+    db.run("DELETE FROM mastery WHERE user_id=? AND game_id=?", (u["id"], gid))
+    db.run("DELETE FROM events WHERE user_id=? AND game_id=?", (u["id"], gid))
     f = pipeline.SCRIPTS / (re.sub(r"[^a-z0-9]", "", gid.lower()) + ".json")
     if f.exists():
         f.unlink()
     return {"ok": True}
 
 
-def assign(r, cid):
-    c = own_class(r, cid)
-    gid = clean(r.body.get("gameId"), 40)
-    g = db.q("SELECT * FROM games WHERE id=? AND teacher_id=?", (gid, r.teacher["id"]), one=True)
-    if not g:
+def usable(u, gid):
+    """A game may be used if it is the shared starter, the student's own, or the student's game still being built."""
+    if db.can_use_game(u["id"], gid):
+        return True
+    job = pipeline.JOBS.get(gid)
+    return bool(job and job.opts.get("owner") == u["id"])
+
+
+def script_get(r, sid):
+    u = r.need()
+    if not usable(u, sid):
         raise Err(404, "Game not found.")
-    if r.body.get("on", True):
-        db.run("INSERT OR IGNORE INTO assignments(class_id,game_id,created) VALUES(?,?,?)", (c["id"], gid, int(time.time())))
-    else:
-        db.run("DELETE FROM assignments WHERE class_id=? AND game_id=?", (c["id"], gid))
-    return {"ok": True}
+    s = pipeline.load_script(sid)
+    if not s:
+        raise Err(404, "Game not found.")
+    return s
 
 
-def student_delete(r, cid, sid):
-    c = own_class(r, cid)
-    db.run("DELETE FROM students WHERE id=? AND class_id=?", (int(sid), c["id"]))
-    return {"ok": True}
-
-
-def report(r, cid):
-    c = own_class(r, cid)
-    gid = clean(r.query.get("game", [""])[0], 40)
-    if not db.q("SELECT 1 FROM assignments WHERE class_id=? AND game_id=?", (c["id"], gid), one=True):
-        raise Err(404, "That game is not assigned to this class.")
-    script = pipeline.load_script(gid) or {"chapters": [], "title": gid}
-    qinfo, cname = {}, {}
-    for ch in script["chapters"]:
-        for k in ch.get("concepts", []):
-            cname[k["id"]] = k["name"]
-        for s in ch["scenes"]:
-            for qq in ([s["question"]] if "question" in s else s.get("questions", [])):
-                qinfo[qq["id"]] = qq
-    total_ch = len(script["chapters"]) + 1
-    students = []
-    stats = {x["student_id"]: x for x in db.q("SELECT student_id, COUNT(*) n, SUM(correct) c FROM events WHERE game_id=? GROUP BY student_id", (gid,))}
-    for s in db.q("SELECT s.id,s.nickname,s.last_seen,p.chapter_idx,p.score,p.finished FROM students s LEFT JOIN progress p ON p.student_id=s.id AND p.game_id=? WHERE s.class_id=? ORDER BY s.nickname COLLATE NOCASE", (gid, c["id"])):
-        st = stats.get(s["id"])
-        students.append({"id": s["id"], "nickname": s["nickname"], "answered": st["n"] if st else 0, "accuracy": round(100 * st["c"] / st["n"]) if st and st["n"] else None,
-                         "score": s["score"] or 0, "chapter": min(total_ch, (s["chapter_idx"] or 0)), "finished": bool(s["finished"]), "last_seen": s["last_seen"]})
-    ids = [s["id"] for s in students] or [-1]
-    mark = ",".join("?" * len(ids))
-    concepts = [{"id": x["concept"], "name": cname.get(x["concept"], x["concept"] or "Other"), "attempts": x["n"], "accuracy": round(100 * x["c"] / x["n"])}
-                for x in db.q(f"SELECT concept, COUNT(*) n, SUM(correct) c FROM events WHERE game_id=? AND student_id IN ({mark}) GROUP BY concept ORDER BY (1.0*SUM(correct)/COUNT(*)) ASC", (gid, *ids))]
-    hard = []
-    for x in db.q(f"SELECT qid, COUNT(*) n, SUM(correct) c FROM events WHERE game_id=? AND student_id IN ({mark}) GROUP BY qid HAVING COUNT(*)>=2 ORDER BY (1.0*SUM(correct)/COUNT(*)) ASC LIMIT 8", (gid, *ids)):
-        qq = qinfo.get(x["qid"])
-        if qq:
-            hard.append({"prompt": qq["prompt"], "answer": qq["options"][qq["correctIndex"]], "attempts": x["n"], "accuracy": round(100 * x["c"] / x["n"])})
-    tot = sum(s["answered"] for s in students)
-    right = sum(round(s["answered"] * (s["accuracy"] or 0) / 100) for s in students)
-    return {"game": {"id": gid, "title": script.get("title")}, "class": {"id": c["id"], "name": c["name"], "code": c["code"]}, "totalChapters": total_ch,
-            "summary": {"students": len(students), "started": sum(1 for s in students if s["answered"]), "finished": sum(1 for s in students if s["finished"]), "accuracy": round(100 * right / tot) if tot else None},
-            "students": students, "concepts": concepts, "hardest": hard}
-
-
-# ----------------------------------------------------------------------------- students
-def student_games(cls_id):
-    return [{"id": g["id"], "title": g["title"]} for g in db.q("SELECT g.id,g.title FROM assignments a JOIN games g ON g.id=a.game_id WHERE a.class_id=? ORDER BY a.created", (cls_id,))]
-
-
-def join(r):
-    limit(("join", r.ip), 40, 600)
-    code, nick = clean(r.body.get("code"), 12), clean(r.body.get("nickname"), 20)
-    if not NICK.match(nick):
-        raise Err(400, "Use a nickname of 2 to 20 letters or numbers.")
-    res, err = db.join_class(code, nick, clean(r.body.get("token"), 80) or None)
-    if err:
-        raise Err(404 if "code" in err else 409, err)
-    s, cls = res
-    return {"token": s["token"], "nickname": s["nickname"], "className": cls["name"], "games": student_games(cls["id"])}
-
-
-def student_my_games(r):
-    s = r.student()
-    cls = db.q("SELECT * FROM classes WHERE id=?", (s["class_id"],), one=True)
-    prog = {p["game_id"]: p for p in db.q("SELECT * FROM progress WHERE student_id=?", (s["id"],))}
-    games = student_games(s["class_id"])
-    for g in games:
-        p = prog.get(g["id"])
-        g["progress"] = {"chapter": p["chapter_idx"], "score": p["score"], "finished": bool(p["finished"])} if p else None
-    return {"nickname": s["nickname"], "className": cls["name"], "games": games}
-
-
-def assigned(s, gid):
-    return db.q("SELECT 1 FROM assignments WHERE class_id=? AND game_id=?", (s["class_id"], gid), one=True) is not None
-
-
-def events(r):
-    s = r.student()
-    limit(("ev", s["id"]), 120, 60)
-    gid = clean(r.body.get("gameId"), 40)
-    if not assigned(s, gid):
-        raise Err(403, "That game is not assigned to your class.")
-    now, rows = int(time.time()), []
-    for e in (r.body.get("events") or [])[:200]:
-        qid = clean(e.get("qid"), 40)
-        if qid:
-            rows.append((s["id"], gid, clean(e.get("chapter"), 40), clean(e.get("kind"), 20), qid, clean(e.get("concept"), 40), 1 if e.get("correct") else 0, now))
-    with db._lock:
-        db.conn().executemany("INSERT INTO events(student_id,game_id,chapter,kind,qid,concept,correct,ts) VALUES(?,?,?,?,?,?,?,?)", rows)
-    return {"saved": len(rows)}
-
-
-def progress_get(r):
-    s = r.student()
-    gid = clean(r.query.get("game", [""])[0], 40)
-    p = db.q("SELECT * FROM progress WHERE student_id=? AND game_id=?", (s["id"], gid), one=True)
-    return {"progress": {"chapter": p["chapter_idx"], "score": p["score"], "finished": bool(p["finished"])} if p else None}
-
-
-def progress_set(r):
-    s = r.student()
-    gid = clean(r.body.get("gameId"), 40)
-    if not assigned(s, gid):
-        raise Err(403, "That game is not assigned to your class.")
-    ch, score = max(0, min(50, int(r.body.get("chapterIdx") or 0))), max(0, min(10 ** 7, int(r.body.get("score") or 0)))
-    db.run("INSERT INTO progress(student_id,game_id,chapter_idx,score,finished,updated) VALUES(?,?,?,?,?,?) ON CONFLICT(student_id,game_id) DO UPDATE SET chapter_idx=MAX(chapter_idx,excluded.chapter_idx), score=MAX(score,excluded.score), finished=MAX(finished,excluded.finished), updated=excluded.updated",
-           (s["id"], gid, ch, score, 1 if r.body.get("finished") else 0, int(time.time())))
-    return {"ok": True}
-
-
-# ----------------------------------------------------------------------------- upload jobs + scripts
 def job_create(r):
-    limit(("job", r.ip), 12, 3600)
-    t = r.teacher
-    if config.HOSTED and not t:
-        raise Err(401, "Log in as a teacher to create games.")
-    if t and db.games_today(t["id"]) + sum(1 for j in pipeline.JOBS.values() if j.opts.get("owner") == t["id"] and j.status in ("queued", "running")) >= config.MAX_GAMES_PER_DAY:
-        raise Err(429, f"Daily limit reached ({config.MAX_GAMES_PER_DAY} games per day). Try again tomorrow.")
+    u = r.need()
+    limit(("job", u["id"]), 12, 3600)
+    busy = sum(1 for j in pipeline.JOBS.values() if j.opts.get("owner") == u["id"] and j.status in ("queued", "running"))
+    if busy >= 2:
+        raise Err(429, "Two games are already being built for you. Wait for one to finish.")
+    if db.games_today(u["id"]) + busy >= config.MAX_GAMES_PER_DAY:
+        raise Err(429, f"Daily limit reached ({config.MAX_GAMES_PER_DAY} new games per day). Try again tomorrow.")
     filename = clean(r.body.get("filename") or "notes.txt", 120)
-    opts = {"offline": bool(r.body.get("offline")), "owner": t["id"] if t else None}
+    opts = {"offline": bool(r.body.get("offline")), "owner": u["id"]}
     if r.body.get("text"):
         import ingest
         job = pipeline.start(filename, text=str(r.body["text"])[:ingest.MAX_CHARS], opts=opts)
@@ -305,47 +192,85 @@ def job_create(r):
 
 
 def job_get(r, jid):
+    u = r.need()
     job = pipeline.JOBS.get(jid)
-    if not job:
+    if not job or job.opts.get("owner") != u["id"]:
         raise Err(404, "Unknown job.")
     return job.public()
 
 
-def scripts_list(r):
-    if config.HOSTED:
-        t = r.need_teacher()
-        return [{"id": g["id"], "title": g["title"], "chapters": 0, "mode": "ai", "modified": g["created"]} for g in db.q("SELECT * FROM games WHERE teacher_id=? ORDER BY created DESC", (t["id"],))]
-    return pipeline.list_scripts()
+# ----------------------------------------------------------------------------- learning loop
+def events(r):
+    u = r.need()
+    limit(("ev", u["id"]), 120, 60)
+    gid = clean(r.body.get("gameId"), 40)
+    if not usable(u, gid):
+        raise Err(403, "That game is not yours.")
+    rows = []
+    for e in (r.body.get("events") or [])[:200]:
+        qid = clean(e.get("qid"), 40)
+        if qid:
+            rows.append({"qid": qid, "concept": clean(e.get("concept"), 40), "correct": bool(e.get("correct")), "kind": clean(e.get("kind"), 20), "chapter": clean(e.get("chapter"), 40),
+                         "difficulty": max(1, min(3, int(e.get("difficulty") or 2))), "ms": max(0, min(600000, int(e.get("ms") or 0))), "hints": max(0, min(5, int(e.get("hints") or 0)))})
+    return {"saved": db.apply_events(u["id"], gid, rows) if rows else 0}
 
 
-def script_get(r, sid):
-    s = pipeline.load_script(sid)
-    if not s:
-        raise Err(404, "Game not found.")
-    return s
+def progress_get(r):
+    u = r.need()
+    p = db.q("SELECT * FROM progress WHERE user_id=? AND game_id=?", (u["id"], r.q1("game")), one=True)
+    return {"progress": {"chapter": p["chapter_idx"], "score": p["score"], "finished": bool(p["finished"])} if p else None}
+
+
+def progress_set(r):
+    u = r.need()
+    gid = clean(r.body.get("gameId"), 40)
+    if not usable(u, gid):
+        raise Err(403, "That game is not yours.")
+    ch, score = max(0, min(50, int(r.body.get("chapterIdx") or 0))), max(0, min(10 ** 7, int(r.body.get("score") or 0)))
+    db.run("INSERT INTO progress(user_id,game_id,chapter_idx,score,finished,updated) VALUES(?,?,?,?,?,?) ON CONFLICT(user_id,game_id) DO UPDATE SET "
+           "chapter_idx=MAX(chapter_idx,excluded.chapter_idx), score=MAX(score,excluded.score), finished=MAX(finished,excluded.finished), updated=excluded.updated",
+           (u["id"], gid, ch, score, 1 if r.body.get("finished") else 0, int(time.time())))
+    return {"ok": True}
+
+
+def adapt(r):
+    u = r.need()
+    gid = r.q1("game")
+    return roadmap.adaptation(u, gid or None)
+
+
+def stats(r):
+    return roadmap.stats(r.need())
+
+
+def roadmap_get(r):
+    u = r.need()
+    out = roadmap.build(u)
+    out["stats"] = roadmap.stats(u)
+    a = roadmap.adaptation(u)
+    out["adaptation"] = {k: a[k] for k in ("difficulty", "style", "maxHearts", "why")}
+    return out
 
 
 def status(r):
-    return {"llm": llm.available(), "model": llm.label(), "providers": llm.status(), "web": llm.has_web(), "mode": "ai" if llm.available() else "offline", "hosted": config.HOSTED}
+    return {"llm": llm.available(), "model": llm.label(), "providers": llm.status(), "web": llm.has_web(), "mode": "ai" if llm.available() else "offline"}
 
 
 # ----------------------------------------------------------------------------- routing
 ROUTES = [
     ("GET", r"/api/status", status), ("GET", r"/api/me", me),
-    ("POST", r"/api/teacher/register", register), ("POST", r"/api/teacher/login", login), ("POST", r"/api/teacher/logout", logout),
-    ("GET", r"/api/classes", classes_list), ("POST", r"/api/classes", class_create),
-    ("DELETE", r"/api/classes/(\d+)", class_delete), ("POST", r"/api/classes/(\d+)/assign", assign),
-    ("GET", r"/api/classes/(\d+)/report", report), ("DELETE", r"/api/classes/(\d+)/students/(\d+)", student_delete),
-    ("GET", r"/api/teacher/games", teacher_games), ("DELETE", r"/api/games/([a-z0-9]{4,40})", game_delete),
-    ("POST", r"/api/join", join), ("GET", r"/api/student/games", student_my_games),
-    ("POST", r"/api/events", events), ("GET", r"/api/progress", progress_get), ("POST", r"/api/progress", progress_set),
+    ("POST", r"/api/register", register), ("POST", r"/api/login", login), ("POST", r"/api/logout", logout),
+    ("POST", r"/api/profile", profile_set), ("DELETE", r"/api/account", account_delete),
+    ("GET", r"/api/games", games_list), ("DELETE", r"/api/games/([a-z0-9]{4,40})", game_delete),
+    ("GET", r"/api/scripts/([a-z0-9]+)", script_get),
     ("POST", r"/api/jobs", job_create), ("GET", r"/api/jobs/([a-z0-9]+)", job_get),
-    ("GET", r"/api/scripts", scripts_list), ("GET", r"/api/scripts/([a-z0-9]+)", script_get),
+    ("POST", r"/api/events", events), ("GET", r"/api/progress", progress_get), ("POST", r"/api/progress", progress_set),
+    ("GET", r"/api/adapt", adapt), ("GET", r"/api/stats", stats), ("GET", r"/api/roadmap", roadmap_get),
 ]
 
 
 def dispatch(req: Req):
-    """Returns (status, json-able). Raises nothing: errors become {error}."""
+    """Returns (status, json-able). Errors become {error}; details never reach the browser."""
     try:
         for method, pat, fn in ROUTES:
             if method == req.method:

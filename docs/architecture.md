@@ -3,7 +3,9 @@
 ```
 Browser (arcana/)                          Server (server/)
  game: Phaser 3 engine ───────────────►  api.py       routes, auth, rate limits
- teacher.html portal                      db.py        SQLite: teachers, classes, students, events, progress
+ index.html dashboard + roadmap          db.py        SQLite: users, sessions, games, events, progress, mastery
+                                          mastery.py   pure engine: mastery, difficulty, teaching style, settings
+                                          roadmap.py   stats, adaptation per student, roadmap nodes, achievements
                                           pipeline.py  file -> text -> plan -> chapters -> verify -> GameScript JSON
                                           llm.py       provider router with failover (Claude, Gemini, Groq, ...)
                                           ingest.py    PDF/DOCX/PPTX/TXT/HTML readers
@@ -20,7 +22,7 @@ The AI side produces a **GameScript** (JSON data). The game engine turns it into
 4. For each chapter two calls write lessons and questions; a third call re-answers every question and drops any that disagree. Chapter 1 is published first so play can start.
 5. `assemble_chapter` builds scenes deterministically in a fixed order, so the engine always receives a playable chapter.
 6. The finished script is saved as `data/scripts/<id>.json`.
-7. Students play; answers go to `POST /api/events`, progress to `POST /api/progress`. The teacher reads `GET /api/classes/<id>/report`.
+7. Students play; answers go to `POST /api/events`, progress to `POST /api/progress`. `db.apply_events` updates per-concept mastery in the same transaction. Before each chapter the game calls `GET /api/adapt` and applies the returned settings (hearts, boss ratio, rival skill, hints, practice questions). The dashboard reads `GET /api/roadmap`.
 
 ## Modules and ownership boundaries
 | Module | Files | Rule |
@@ -28,7 +30,7 @@ The AI side produces a **GameScript** (JSON data). The game engine turns it into
 | AI layer | `llm.py`, `pipeline.py`, `mockgen.py` | Never imports the game; outputs GameScript only |
 | Platform | `api.py`, `db.py`, `config.py`, `server.py` | No AI logic in the database layer |
 | Game engine | `arcana/game.js`, `fight.js`, `arcade.js`, `art-*.js` | Reads GameScript; reports events; no AI calls |
-| UI | `arcana/ui.js`, `style.css`, `teacher.*` | Presentation and API calls only |
+| UI | `arcana/ui.js`, `style.css`, `home.js`, `home.css` | Presentation and API calls only |
 
 ## Deliberate deviations from the master specification
 - **Standard-library server and SQLite instead of FastAPI and PostgreSQL.** Zero install, easy to run for a solo developer and for a demo. The route table in `api.py` maps one-to-one to FastAPI routes if migration is needed. Required before any real scale.
@@ -37,4 +39,4 @@ The AI side produces a **GameScript** (JSON data). The game engine turns it into
 - **Modular monolith.** One deployable service, as the spec recommends for the MVP.
 
 ## Security notes
-Passwords: scrypt. Sessions: random token, HttpOnly SameSite=Lax cookie (Secure when hosted). Students: random token, no personal data beyond a nickname. POST bodies must be JSON (blocks cross-site form posts). Output from the server and from the AI is escaped before display. Spreadsheet exports neutralise formula injection. API keys live only in `.env` or the host's environment.
+Passwords: scrypt. Sessions: random token, HttpOnly SameSite=Lax cookie (Secure when hosted). Students: username and password only, no email. Every query is scoped to the logged-in user and games are private to their owner. POST bodies must be JSON (blocks cross-site form posts). Output from the server and from the AI is escaped before display. Spreadsheet exports neutralise formula injection. API keys live only in `.env` or the host's environment.

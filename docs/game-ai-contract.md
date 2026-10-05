@@ -6,7 +6,7 @@ The only thing that crosses from the AI side to the game engine. Produced by `se
 {
   "schemaVersion": 1,
   "projectId": "…", "title": "…", "summary": "…",
-  "audience": { "level": "school", "modes": ["student", "teacher"] },
+  "audience": { "level": "school" },
   "chapters": [{
     "id": "ch1", "title": "…", "goal": "…",
     "theme": { "background": "ancient_forest | crystal_cave | ember_citadel | desert_canyon | aurora_peaks" },
@@ -30,8 +30,9 @@ The only thing that crosses from the AI side to the game engine. Produced by `se
 Rules the engine relies on: question ids are unique; `correctIndex` is in range; options are distinct; every chapter has a boss and at least 4 questions.
 
 ## Events from the game (student API)
-`POST /api/events` `{ gameId, events: [{ qid, concept, correct, kind, chapter }] }` with header `X-Student-Token`.
+`POST /api/events` `{ gameId, events: [{ qid, concept, correct, difficulty, ms, hints, kind, chapter }] }` (session cookie).
+`GET /api/adapt?game=<id>` returns the student's current setup: `difficulty` 1-5, `style` guided|balanced|challenge, `maxHearts`, boss and rival tuning, `showHints`, `explainAlways`, `practice` question ids and a plain-language `why`.
 `POST /api/progress` `{ gameId, chapterIdx, score, finished }`. Progress only moves forward.
 
 ## Not yet in the contract (planned, see project-status.md)
-Hints used, response time, selected answer, mission started/failed events, and a game specification generated per student by a planner.
+Selected answer, mission started/failed events, and a game specification generated per student by a planner (today the same chapters are played with per-student settings and a practice station).

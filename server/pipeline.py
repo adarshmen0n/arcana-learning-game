@@ -212,16 +212,16 @@ def _ai(job: Job, text: str):
         return doc_block(index.context(query, 1800), notes)
 
     def build(i):
-        for attempt in range(1, 5):
+        for attempt in range(1, 7):
             try:
                 return gen_chapter(job, plan, i, doc_for(i), index)
             except llm.LLMError as e:
                 msg = str(e)
-                if attempt == 4 or "rejected" in msg or "declined" in msg:
+                if attempt == 6 or "rejected" in msg or "declined" in msg:
                     raise
                 m = re.search(r"in about (\d+) seconds", msg)
                 wait = min(int(m.group(1)) + 2, 150) if m else 0
-                if m and int(m.group(1)) > 240:
+                if m and int(m.group(1)) > 900:
                     raise                                              # the quota is gone for a long time: say so instead of hanging
                 job.log(f"Chapter {i + 1} retry{f' in {wait}s (the free AI services need a short rest)' if wait else ''}: {msg[:120]}")
                 if wait:

@@ -16,12 +16,17 @@ NOTES = """The Water Cycle. Water moves continuously between oceans, air and lan
 
 
 def call(method, path, body=None):
-    req = urllib.request.Request(BASE + path, method=method, data=json.dumps(body).encode() if body is not None else None, headers={"Content-Type": "application/json"})
-    try:
-        with op.open(req, timeout=60) as r:
-            return r.status, json.loads(r.read() or b"{}")
-    except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read() or b"{}")
+    for attempt in range(5):                       # a flaky home connection should not fail the test
+        req = urllib.request.Request(BASE + path, method=method, data=json.dumps(body).encode() if body is not None else None, headers={"Content-Type": "application/json"})
+        try:
+            with op.open(req, timeout=60) as r:
+                return r.status, json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read() or b"{}")
+        except (urllib.error.URLError, ConnectionError, TimeoutError, OSError):
+            if attempt == 4:
+                raise
+            time.sleep(4)
 
 
 def step(msg, cond, extra=""):
@@ -44,7 +49,7 @@ while time.time() - t0 < 900:
     if job.get("status") in ("done", "error"):
         break
     time.sleep(5)
-step("game built", job.get("status") == "done", f"{round(time.time() - t0)}s | {job.get('title')}")
+step("game built", job.get("status") == "done", f"{round(time.time() - t0)}s | {job.get('title')} | {job.get('error') or ''} | {(job.get('logs') or [{}])[-1].get('msg', '')}")
 sc = job["script"]
 text = json.dumps(sc).lower()
 step("content is about the upload", "water" in text and "evapor" in text and "chlorophyll" not in text)

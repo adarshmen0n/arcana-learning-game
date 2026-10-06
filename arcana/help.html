@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Help and support | ARCANA AI</title>
+  <meta name="theme-color" content="#020503">
+  <link rel="icon" href="icon-192.png">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="home.css">
+</head>
+<body>
+  <header><a class="brand" href="/"><img src="icon-192.png" alt="" width="34" height="34"><b>ARCANA</b><span>AI</span></a><div><a class="btn" href="/">Open app</a></div></header>
+  <main class="doc" style="display:block">
+<h1>Help and support</h1><p class="updated">Answers first. If you are still stuck, send us a message below and we will reply by email.</p>
+<h2>Common questions</h2>
+<details><summary>How do I make a game from my notes?</summary><p>Log in, open your dashboard, choose a file (or paste text) and press &ldquo;Create my game&rdquo;. The first chapter opens while the rest is still being built.</p></details>
+<details><summary>Which files work?</summary><p>PDF, DOCX, PPTX, TXT, Markdown, HTML and images up to 25 MB. Text-based files work best. Scanned PDFs and photos need an AI service that can read images and are slower.</p></details>
+<details><summary>Why does building take a few minutes?</summary><p>An AI plans your chapters, writes lessons and questions, and then a second pass checks every question against your material. Busy AI services can make it slower.</p></details>
+<details><summary>The game is not about my file. What happened?</summary><p>Games are built only from the text of your upload. If the file had little readable text (for example a scanned PDF), the result can be thin. Try a text-based version, or send us a message with the file type.</p></details>
+<details><summary>How does the game adapt to me?</summary><p>ARCANA records every answer, how long it took and whether you used hints. It estimates your mastery of each topic and changes your difficulty, hearts, hints and extra practice. Your dashboard explains the current setup in plain words.</p></details>
+<details><summary>I forgot my password.</summary><p>If you see &ldquo;Forgot your password?&rdquo; on the log-in form, use it. If not, send us a message below from the email you signed up with.</p></details>
+<details><summary>How do I download or delete my data?</summary><p>Open your profile (your name at the top right). &ldquo;Download my data&rdquo; saves a copy. &ldquo;Delete my account&rdquo; removes everything permanently.</p></details>
+<details><summary>Can I play on my phone?</summary><p>Yes. Open the site in your phone browser and choose &ldquo;Add to Home screen&rdquo; to install it like an app. Touch controls appear in landscape.</p></details>
+<details><summary>Controls on a keyboard</summary><p>A and D or the arrow keys to move, W or Space to jump, Shift to sprint, E to interact, 1 to 4 to answer, M to mute.</p></details>
+<h2>Contact us</h2>
+<form id="tf" class="card" novalidate style="max-width:640px">
+<label>Your email<input name="email" type="email" autocomplete="email" required></label>
+<label>Topic<select name="category"><option value="question">Question</option><option value="bug">Something is broken</option><option value="account">My account</option><option value="feedback">Feedback</option><option value="other">Other</option></select></label>
+<label>Subject<input name="subject" maxlength="120" required></label>
+<label>Message<textarea name="message" rows="6" maxlength="4000" required placeholder="Tell us what happened, what you expected, and the file type if it is about an upload."></textarea></label>
+<div id="te"></div><button class="primary">Send message</button>
+</form>
+  </main>
+  <footer class="site-foot"><span>&copy; 2026 ARCANA AI. Created by Adarsh Menon.</span><nav><a href="/help.html">Help and support</a><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a></nav></footer>
+  <script>
+  fetch("/api/me").then((r) => r.json()).then((j) => { if (j.user && j.user.email) { const i = document.querySelector("[name=email]"); i.value = j.user.email; } }).catch(() => {});
+  document.getElementById("tf").onsubmit = async (e) => {
+    e.preventDefault(); const f = e.target, b = f.querySelector("button"); b.disabled = true;
+    const d = Object.fromEntries(new FormData(f)); const te = document.getElementById("te");
+    try {
+      const r = await fetch("/api/support", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(d) }); const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Could not send");
+      f.innerHTML = "<h2>Thank you</h2><p>Your message was received (reference #" + j.id + "). We will reply to the email you gave.</p>";
+    } catch (er) { te.innerHTML = '<div class="err"></div>'; te.firstChild.textContent = er.message; b.disabled = false; }
+  };
+  </script>
+</body>
+</html>

@@ -31,9 +31,10 @@ def step(msg, cond, extra=""):
 
 
 name = "smoke" + str(int(time.time()))[-7:]
-s, d = call("POST", "/api/register", {"username": name, "password": "smoketest-pass1", "gender": "f"})
+s, d = call("POST", "/api/register", {"username": name, "email": name + "@example.com", "password": "smoketest-pass1", "gender": "f", "acceptTerms": True})
 step("register", s == 200)
 step("session persists", call("GET", "/api/me")[1]["user"]["username"] == name)
+step("new student has no games yet", call("GET", "/api/games")[1] == [])
 s, d = call("POST", "/api/jobs", {"filename": "water-cycle.txt", "text": NOTES})
 step("upload accepted", s == 200, d.get("mode", ""))
 jid, t0 = d["id"], time.time()
@@ -46,7 +47,7 @@ while time.time() - t0 < 900:
 step("game built", job.get("status") == "done", f"{round(time.time() - t0)}s | {job.get('title')}")
 sc = job["script"]
 text = json.dumps(sc).lower()
-step("content is about the upload, not the demo", "water" in text and "evapor" in text and "chlorophyll" not in text)
+step("content is about the upload", "water" in text and "evapor" in text and "chlorophyll" not in text)
 qs = [q for ch in sc["chapters"] for x in ch["scenes"] for q in ([x["question"]] if "question" in x else x.get("questions", []))]
 step("has questions", len(qs) >= 8, str(len(qs)))
 step("game is stored for this student", any(g["id"] == jid for g in call("GET", "/api/games")[1]))
@@ -60,6 +61,6 @@ step("adaptation available", call("GET", "/api/adapt?game=" + jid)[1].get("maxHe
 co = call("GET", "/api/coach")[1]
 step("coach analysis", co["answers"] == 12 and co["plan"])
 step("logout", call("POST", "/api/logout")[0] == 200 and call("GET", "/api/games")[0] == 401)
-call("POST", "/api/login", {"username": name, "password": "smoketest-pass1"})
+call("POST", "/api/login", {"login": name + "@example.com", "password": "smoketest-pass1"})
 step("delete account (cleanup)", call("DELETE", "/api/account")[0] == 200)
 print("\nLIVE SMOKE OK")

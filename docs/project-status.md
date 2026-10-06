@@ -35,7 +35,7 @@ ARCANA is a **student-only, single-player** product. Content to game to events t
 | Frontend | DONE, browser-checked | Dashboard (login, stats, adaptive setup, roadmap, upload, games) and game. Keyboard and phone play not hand-tested. |
 | Teacher portal | REMOVED | By design: students only; the game is the teacher |
 | Backend | DONE, deviation | Standard-library HTTP server and SQLite, not FastAPI and PostgreSQL (see architecture.md) |
-| Authentication | DONE, verified | Username and password (scrypt), 30-day HttpOnly session cookie, logout, delete account. No password reset (no email). |
+| Authentication and account care | DONE, verified | Email + password (scrypt), strength rules, terms acceptance, 30-day HttpOnly session, change password, reset by email (needs SMTP settings), log out everywhere, data export, delete account, support tickets and admin inbox. No email verification yet. |
 | Observability | PARTIAL | Per-job logs and token tallies. No structured request logging. |
 | Security | PARTIAL | Hashing, rate limits, JSON-only POSTs, escaped output, key in `.env`. No CORS (same origin only). |
 | Tests | PARTIAL | 4 suites pass (mastery, platform incl. adaptation and roadmap, AI path, ingest). No CI; no automated browser test. |

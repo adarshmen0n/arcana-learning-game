@@ -451,8 +451,6 @@ def check_script(s) -> list:
 
 def load_script(sid):
     sid = re.sub(r"[^a-z0-9]", "", sid.lower())
-    if sid == "starter":
-        return json.loads((pathlib.Path(__file__).parent / "starter_game.json").read_text(encoding="utf-8"))
     s = db.get_script(sid)
     if s is not None:
         return s

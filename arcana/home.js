@@ -16,42 +16,76 @@ const pct = (m) => (m == null ? "-" : Math.round(m * 100) + "%");
 const tone = (m) => (m == null ? "" : m >= 0.7 ? "" : m >= 0.45 ? "mid" : "bad");
 
 // ------------------------------------------------------------------ account
-function authView(msg = "") {
-  let mode = "login", gender = "m";
+const strength = (p) => { let n = 0; if (p.length >= 8) n++; if (p.length >= 12) n++; if (/[a-z]/.test(p) && /[A-Z]/.test(p)) n++; if (/\d/.test(p)) n++; if (/[^A-Za-z0-9]/.test(p)) n++; return Math.min(4, Math.max(p ? 1 : 0, n - 1)); };
+const STR = ["", "Weak", "Fair", "Good", "Strong"];
+const pwField = (name, label, auto) => `<label>${label}<div class="pw"><input name="${name}" type="password" autocomplete="${auto}" required><button type="button" class="eye" data-eye aria-label="Show password">show</button></div></label>`;
+function wirePw(root) {
+  root.querySelectorAll("[data-eye]").forEach((b) => (b.onclick = () => { const i = b.previousElementSibling; i.type = i.type === "password" ? "text" : "password"; b.textContent = i.type === "password" ? "show" : "hide"; }));
+  const m = root.querySelector("#meter"), inp = root.querySelector("input[name=password]");
+  if (m && inp) inp.addEventListener("input", () => { const v = strength(inp.value); m.className = "meter s" + v; m.querySelector("span").textContent = inp.value ? STR[v] : ""; });
+}
+function authView(msg = "", startMode = "login") {
+  let mode = startMode, gender = "m", forgot = false, mailOn = false;
+  api("/api/status").then((c) => { mailOn = !!c.mail; if (mode === "login") draw(); }).catch(() => {});
   const draw = () => {
     if (!$("#bg")) { app.innerHTML = `<div class="landing"><canvas id="bg"></canvas><section class="intro"><div class="logoline"><span>ARCANA</span><b>AI</b></div><h2 class="tag">Turn your notes into <em id="rot">a game</em></h2>
       <p class="muted">Upload your own study material. ARCANA builds a playable adventure from it, learns how you study, and draws a roadmap of what to learn next.</p>
       <div class="steps"><div><i>1</i><b>Upload</b><span>PDF, notes or text</span></div><div><i>2</i><b>Play</b><span>fight, solve, explore</span></div><div><i>3</i><b>Adapt</b><span>your own difficulty</span></div><div><i>4</i><b>Master</b><span>roadmap to the boss</span></div></div>
       <p class="by">Created by <b>Adarsh Menon</b></p></section><div id="authbox"></div></div>`; startIntro(); }
-    $("#authbox").innerHTML = `<div class="card auth"><h1>Enter ARCANA</h1>
-      <div class="tabs"><button class="${mode === "login" ? "on" : ""}" data-m="login">Log in</button><button class="${mode === "register" ? "on" : ""}" data-m="register">Create account</button></div>
-      <form id="f">${mode === "register" ? `<h3>Choose your ranger</h3><div class="pick"><button type="button" class="pickc ${gender === "m" ? "sel" : ""}" data-g="m"><i>&#9794;</i><b>Man</b></button><button type="button" class="pickc ${gender === "f" ? "sel" : ""}" data-g="f"><i>&#9792;</i><b>Woman</b></button></div>` : ""}
-      <label>Username<input name="username" maxlength="20" autocomplete="username" required></label>
-      <label>Password<input name="password" type="password" autocomplete="${mode === "login" ? "current-password" : "new-password"}" minlength="${mode === "register" ? 8 : 1}" required></label>
-      <div id="e">${msg ? `<div class="err">${esc(msg)}</div>` : ""}</div><button class="primary" style="width:100%">${mode === "login" ? "Log in" : "Create account"}</button>
-      <p class="muted small">You stay logged in on this device until you log out.${mode === "register" ? " Keep your password safe: it cannot be reset by email." : ""}</p></form><div id="gwrap"></div></div>`;
-    mountGoogle();
-    document.querySelectorAll("#authbox .tabs button").forEach((b) => (b.onclick = () => { mode = b.dataset.m; msg = ""; draw(); }));
-    document.querySelectorAll("#authbox .pickc").forEach((b) => (b.onclick = () => { gender = b.dataset.g; draw(); }));
-    $("#f").onsubmit = async (e) => {
-      e.preventDefault(); const d = Object.fromEntries(new FormData(e.target)); if (mode === "register") d.gender = gender;
-      try { await api(mode === "login" ? "/api/login" : "/api/register", "POST", d); await boot(); } catch (er) { $("#e").innerHTML = `<div class="err">${esc(er.message)}</div>`; }
+    const reg = mode === "register";
+    $("#authbox").innerHTML = forgot ? `<div class="card auth"><h1>Reset password</h1><p class="muted">Enter your account email and we will send you a link to choose a new password.</p>
+      <form id="ff"><label>Email<input name="email" type="email" autocomplete="email" required></label><div id="e"></div><button class="primary" style="width:100%">Send reset link</button></form>
+      <p class="muted small"><a href="#" id="back">Back to log in</a></p></div>` : `<div class="card auth"><h1>${reg ? "Create your account" : "Welcome back"}</h1>
+      <div class="tabs"><button class="${!reg ? "on" : ""}" data-m="login">Log in</button><button class="${reg ? "on" : ""}" data-m="register">Sign up</button></div>
+      <form id="f" novalidate>
+      ${reg ? `<label>Display name<input name="username" maxlength="20" autocomplete="nickname" placeholder="3 to 20 letters or numbers" required></label><label>Email<input name="email" type="email" autocomplete="email" required></label>`
+            : `<label>Email or display name<input name="login" autocomplete="username" required></label>`}
+      ${pwField("password", "Password", reg ? "new-password" : "current-password")}
+      ${reg ? `<div id="meter" class="meter s0"><i></i><i></i><i></i><i></i><span></span></div><h3>Choose your ranger</h3><div class="pick"><button type="button" class="pickc ${gender === "m" ? "sel" : ""}" data-g="m"><i>&#9794;</i><b>Man</b></button><button type="button" class="pickc ${gender === "f" ? "sel" : ""}" data-g="f"><i>&#9792;</i><b>Woman</b></button></div>
+        <label class="check"><input type="checkbox" name="acceptTerms"><span>I agree to the <a href="/terms.html" target="_blank">Terms of Service</a> and <a href="/privacy.html" target="_blank">Privacy Policy</a>.</span></label>` : ""}
+      <div id="e">${msg ? `<div class="err">${esc(msg)}</div>` : ""}</div><button class="primary" style="width:100%">${reg ? "Create account" : "Log in"}</button>
+      ${!reg && mailOn ? '<p class="small"><a href="#" id="fg">Forgot your password?</a></p>' : ""}
+      </form><div id="gwrap"></div>
+      <p class="muted small trust">Your account and progress are stored securely on our servers. Passwords are hashed and never visible to anyone. You stay signed in on this device until you log out. Need help? <a href="/help.html">Help and support</a></p></div>`;
+    const box = $("#authbox"); wirePw(box); mountGoogle();
+    box.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => { mode = b.dataset.m; msg = ""; draw(); }));
+    box.querySelectorAll(".pickc").forEach((b) => (b.onclick = () => { gender = b.dataset.g; const keep = Object.fromEntries(new FormData($("#f"))); draw(); const f = $("#f"); for (const k of ["username", "email"]) if (keep[k]) f[k].value = keep[k]; }));
+    const fg = $("#fg"); if (fg) fg.onclick = (e) => { e.preventDefault(); forgot = true; draw(); };
+    const bk = $("#back"); if (bk) bk.onclick = (e) => { e.preventDefault(); forgot = false; draw(); };
+    if ($("#ff")) $("#ff").onsubmit = async (e) => { e.preventDefault(); try { await api("/api/forgot", "POST", { email: e.target.email.value }); $("#authbox .card").innerHTML = '<h1>Check your email</h1><p>If an account exists for that address, a reset link is on its way. It works for 60 minutes.</p><p class="muted small"><a href="/">Back to log in</a></p>'; } catch (er) { $("#e").innerHTML = `<div class="err">${esc(er.message)}</div>`; } };
+    if ($("#f")) $("#f").onsubmit = async (e) => {
+      e.preventDefault(); const f = e.target, d = Object.fromEntries(new FormData(f)); const btn = f.querySelector("button.primary"); btn.disabled = true;
+      if (reg) { d.gender = gender; d.acceptTerms = f.acceptTerms.checked; }
+      try { await api(reg ? "/api/register" : "/api/login", "POST", d); await boot(); } catch (er) { $("#e").innerHTML = `<div class="err">${esc(er.message)}</div>`; btn.disabled = false; }
     };
   };
   draw();
 }
+function resetView(token) {
+  app.innerHTML = `<div class="card auth" style="margin:40px auto"><h1>Choose a new password</h1><form id="rf" novalidate>${pwField("password", "New password", "new-password")}<div id="meter" class="meter s0"><i></i><i></i><i></i><i></i><span></span></div><div id="e"></div><button class="primary" style="width:100%">Save and log in</button></form></div>`;
+  wirePw(app);
+  $("#rf").onsubmit = async (e) => { e.preventDefault(); try { await api("/api/reset", "POST", { token, password: e.target.password.value }); history.replaceState(null, "", "/"); toast("Password changed. You are logged in."); await boot(); } catch (er) { $("#e").innerHTML = `<div class="err">${esc(er.message)}</div>`; } };
+}
 async function logout() { await api("/api/logout", "POST"); S.user = null; $("#who").innerHTML = ""; authView(); }
 
 function profileDialog() {
-  const d = document.createElement("dialog");
-  d.innerHTML = `<h2>${esc(S.user.username)}</h2><h3>Your ranger</h3><div class="pick"><button class="pickc ${S.user.gender === "m" ? "sel" : ""}" data-g="m"><i>&#9794;</i><b>Man</b></button><button class="pickc ${S.user.gender === "f" ? "sel" : ""}" data-g="f"><i>&#9792;</i><b>Woman</b></button></div>
-    <h3>Danger zone</h3><p class="muted small">Deleting your account permanently removes your games, answers, mastery and roadmap.</p><div class="row between"><button class="danger" id="del">Delete my account</button><button id="close">Close</button></div>`;
-  document.body.appendChild(d); d.showModal();
-  d.querySelectorAll(".pickc").forEach((b) => (b.onclick = async () => { await api("/api/profile", "POST", { gender: b.dataset.g }); S.user.gender = b.dataset.g; d.close(); d.remove(); toast("Ranger updated"); }));
-  $("#close", d).onclick = () => { d.close(); d.remove(); };
-  $("#del", d).onclick = async () => { if (confirm("Delete your account and everything in it? This cannot be undone.")) { await api("/api/account", "DELETE"); d.close(); d.remove(); S.user = null; $("#who").innerHTML = ""; authView(); } };
+  const u = S.user, d = document.createElement("dialog");
+  d.innerHTML = `<div class="row between"><h2 style="margin:0">${esc(u.username)}</h2><button id="close">Close</button></div><p class="muted small">${esc(u.email || "No email on this account")}</p>
+    <h3>Your ranger</h3><div class="pick"><button class="pickc ${u.gender === "m" ? "sel" : ""}" data-g="m"><i>&#9794;</i><b>Man</b></button><button class="pickc ${u.gender === "f" ? "sel" : ""}" data-g="f"><i>&#9792;</i><b>Woman</b></button></div>
+    <h3>${u.hasPassword ? "Change password" : "Set a password"}</h3><form id="pf" novalidate>${u.hasPassword ? pwField("current", "Current password", "current-password") : ""}${pwField("password", "New password", "new-password")}<div id="meter" class="meter s0"><i></i><i></i><i></i><i></i><span></span></div><div id="pe"></div><button class="primary">Save password</button></form>
+    <h3>Your data</h3><div class="row"><button id="exp">Download my data</button><button id="all">Log out of all devices</button></div>
+    <h3>Danger zone</h3><p class="muted small">Deleting your account permanently removes your games, answers, mastery and roadmap. Type DELETE to confirm.</p><div class="row"><input id="dc" placeholder="DELETE" style="max-width:140px"><button class="danger" id="del" disabled>Delete my account</button></div>
+    <p class="muted small" style="margin-top:14px"><a href="/help.html">Help and support</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/privacy.html">Privacy</a></p>`;
+  document.body.appendChild(d); d.showModal(); wirePw(d);
+  const shut = () => { d.close(); d.remove(); };
+  d.querySelectorAll(".pickc").forEach((b) => (b.onclick = async () => { await api("/api/profile", "POST", { gender: b.dataset.g }); S.user.gender = b.dataset.g; shut(); toast("Ranger updated"); dash(); }));
+  $("#close", d).onclick = shut;
+  $("#pf", d).onsubmit = async (e) => { e.preventDefault(); const f = e.target; try { await api("/api/password", "POST", { current: f.current ? f.current.value : "", new: f.password.value }); S.user.hasPassword = true; shut(); toast("Password updated"); } catch (er) { $("#pe", d).innerHTML = `<div class="err">${esc(er.message)}</div>`; } };
+  $("#exp", d).onclick = async () => { try { const j = await api("/api/export"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(j, null, 2)], { type: "application/json" })); a.download = "arcana-my-data.json"; a.click(); } catch (er) { toast(er.message); } };
+  $("#all", d).onclick = async () => { await api("/api/logout-all", "POST"); shut(); S.user = null; $("#who").innerHTML = ""; authView(); };
+  $("#dc", d).oninput = (e) => ($("#del", d).disabled = e.target.value.trim() !== "DELETE");
+  $("#del", d).onclick = async () => { await api("/api/account", "DELETE"); shut(); S.user = null; $("#who").innerHTML = ""; authView(); };
 }
-
 
 // ------------------------------------------------------------------ animated intro (canvas): neon grid road, sun, floating runes, rotating tagline
 let introRaf = 0, introTimer = 0;
@@ -118,6 +152,7 @@ function dash() {
   const { stats: st, adaptation: ad, next, achievements, games } = S.rm;
   $("#who").innerHTML = `<button class="ghost" id="prof">${S.user.gender === "f" ? "&#9792;" : "&#9794;"} ${esc(S.user.username)}</button><button class="ghost" id="out">Log out</button>`;
   $("#prof").onclick = profileDialog; $("#out").onclick = logout;
+  if (!S.games.length) { onboarding(); return; }
   const diffDots = [1, 2, 3, 4, 5].map((i) => `<i class="${i <= ad.difficulty ? "on" : ""}"></i>`).join("");
   app.innerHTML = `
   <section class="card hero"><div class="lvl">${st.level}<small>LEVEL</small></div><div>
@@ -137,7 +172,7 @@ function dash() {
   <section class="card"><div class="row between"><h2>Your learning roadmap</h2><span class="muted small">click a stop for details</span></div>${games.map((g, gi) => roadBlock(g, gi)).join("")}
     <div class="legend"><span><i style="background:var(--neon)"></i>done</span><span><i style="background:var(--gold)"></i>mastered</span><span><i style="background:var(--bad)"></i>needs review</span><span><i style="background:#fff"></i>you are here</span><span><i style="background:#1d5a14"></i>locked</span></div><div id="detail"></div></section>
   <div class="grid2">
-    <section class="card"><h2>Your games</h2><div class="list">${S.games.map((g) => `<div class="item"><div><b>${esc(g.title)}</b><div class="tag">${g.starter ? "DEMO GAME // " : ""}${g.progress ? (g.progress.finished ? "FINISHED" : "CHAPTER " + (g.progress.chapter + 1)) + " // " + g.progress.score + " PTS" : "NEW"}</div></div><div class="row"><a class="btn" href="/play.html?game=${encodeURIComponent(g.id)}">${g.progress && !g.progress.finished ? "Continue" : "Play"}</a>${g.starter ? "" : `<button class="danger" data-del="${esc(g.id)}">Delete</button>`}</div></div>`).join("")}</div></section>
+    <section class="card"><h2>Your games</h2><div class="list">${S.games.map((g) => `<div class="item"><div><b>${esc(g.title)}</b><div class="tag">${""}${g.progress ? (g.progress.finished ? "FINISHED" : "CHAPTER " + (g.progress.chapter + 1)) + " // " + g.progress.score + " PTS" : "NEW"}</div></div><div class="row"><a class="btn" href="/play.html?game=${encodeURIComponent(g.id)}">${g.progress && !g.progress.finished ? "Continue" : "Play"}</a><button class="danger" data-del="${esc(g.id)}">Delete</button></div></div>`).join("")}</div></section>
     <section class="card" id="upcard"><h2>Make a game from your notes</h2><p class="muted small" id="note"></p>
       <label class="drop" id="drop"><input type="file" id="file" hidden accept=".pdf,.docx,.pptx,.txt,.md,.html,.htm,.csv,.png,.jpg,.jpeg,.webp"><b id="dropt">Click to choose a file, or drop it here</b><span class="muted small">PDF, DOCX, PPTX, TXT, MD, HTML or an image (max 25 MB)</span></label>
       <label>...or paste your notes<textarea id="paste" rows="3" placeholder="Paste at least a few paragraphs"></textarea></label><div id="msg"></div><button class="primary" id="go">Create my game</button></section>
@@ -146,6 +181,7 @@ function dash() {
   app.querySelectorAll("[data-up]").forEach((b) => (b.onclick = () => $("#upcard").scrollIntoView({ behavior: "smooth" })));
   app.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => { if (confirm("Delete this game and your progress in it?")) { await api("/api/games/" + b.dataset.del, "DELETE"); await refresh(); } }));
   wireRoad(); wireUpload();
+  if (S.user.admin) { const d = document.createElement("div"); d.id = "adminbox"; app.appendChild(d); adminInbox(); }
 }
 
 // ------------------------------------------------------------------ roadmap (SVG snake path, one per game)
@@ -206,12 +242,33 @@ function wireUpload() {
   };
 }
 
+function onboarding() {
+  app.innerHTML = `<section class="card welcome"><h1>Welcome, ${esc(S.user.username)}</h1><p class="lead">Your adventure starts with your own study material. Upload a file or paste notes and ARCANA turns them into a game made only for you.</p>
+    <div class="steps flat"><div><i>1</i><b>Upload</b><span>a PDF, document, slides, notes or a photo of a page</span></div><div><i>2</i><b>Wait a few minutes</b><span>the AI reads it and builds chapters, bosses and quizzes</span></div><div><i>3</i><b>Play</b><span>the first chapter opens while the rest is still being built</span></div><div><i>4</i><b>Improve</b><span>your roadmap and difficulty adapt to how you do</span></div></div></section>
+    <section class="card" id="upcard"><h2>Make your first game</h2><p class="muted small" id="note"></p>
+      <label class="drop" id="drop"><input type="file" id="file" hidden accept=".pdf,.docx,.pptx,.txt,.md,.html,.htm,.csv,.png,.jpg,.jpeg,.webp"><b id="dropt">Click to choose a file, or drop it here</b><span class="muted small">PDF, DOCX, PPTX, TXT, MD, HTML or an image (max 25 MB)</span></label>
+      <label>...or paste your notes<textarea id="paste" rows="4" placeholder="Paste at least a few paragraphs"></textarea></label><div id="msg"></div><button class="primary" id="go">Create my game</button>
+      <p class="muted small">Tip: text-based files work best. Your material is processed by AI services to write the game, so avoid confidential documents. See the <a href="/privacy.html">Privacy Policy</a>.</p></section>
+    ${S.user.admin ? '<div id="adminbox"></div>' : ""}`;
+  wireUpload(); if (S.user.admin) adminInbox();
+}
+async function adminInbox() {
+  const box = $("#adminbox"); if (!box) return;
+  try {
+    const t = await api("/api/admin/tickets");
+    box.innerHTML = `<section class="card"><h2>Support inbox (admin)</h2>${t.length ? t.map((x) => `<div class="item"><div><b>#${x.id} ${esc(x.subject)}</b><div class="tag">${esc(x.category.toUpperCase())} // ${esc(x.email)} // ${esc(x.status.toUpperCase())}</div><p class="small">${esc(x.message)}</p></div><div class="row">${["open", "answered", "closed"].filter((st) => st !== x.status).map((st) => `<button data-t="${x.id}" data-s="${st}">${st}</button>`).join("")}</div></div>`).join("") : '<p class="muted">No tickets yet.</p>'}</section>`;
+    box.querySelectorAll("[data-t]").forEach((b) => (b.onclick = async () => { await api("/api/admin/tickets/" + b.dataset.t, "POST", { status: b.dataset.s }); adminInbox(); }));
+  } catch (e) { box.innerHTML = ""; }
+}
+
 async function refresh() {
   await load(); dash();
   if (S.coach && S.coach.aiPending) setTimeout(async () => { try { S.coach = await api("/api/coach"); const el = $("#coach"); if (el && S.coach.ai) el.outerHTML = coachCard(S.coach); } catch (e) {} }, 20000);
 }
 async function boot() {
   try { S.user = (await api("/api/me")).user; } catch (e) { app.innerHTML = '<div class="card auth"><div class="err">Cannot reach the server.</div></div>'; return; }
+  const reset = new URLSearchParams(location.search).get("reset");
+  if (!S.user && reset) return resetView(reset);
   if (!S.user) return authView();
   await refresh();
 }

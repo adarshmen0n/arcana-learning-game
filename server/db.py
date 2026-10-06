@@ -29,7 +29,6 @@ LOST = (psycopg.OperationalError, psycopg.InterfaceError) if psycopg else ()
 _lock = threading.RLock()
 _conn = None
 SESSION_DAYS = 30
-STARTER = "starter"
 
 SQLITE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL COLLATE NOCASE, pw_hash TEXT NOT NULL, gender TEXT NOT NULL DEFAULT 'm', settings TEXT NOT NULL DEFAULT '{}', created INTEGER NOT NULL);
@@ -38,20 +37,23 @@ CREATE TABLE IF NOT EXISTS games(id TEXT PRIMARY KEY, owner_id INTEGER REFERENCE
 CREATE TABLE IF NOT EXISTS scripts(id TEXT PRIMARY KEY, body TEXT NOT NULL, created INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, chapter TEXT, kind TEXT, qid TEXT, concept TEXT, correct INTEGER NOT NULL, difficulty INTEGER, ms INTEGER, hints INTEGER, ts INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS ev_user ON events(user_id, id);
+CREATE TABLE IF NOT EXISTS resets(token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS tickets(id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, email TEXT NOT NULL, category TEXT NOT NULL, subject TEXT NOT NULL, message TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', created INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS progress(user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, chapter_idx INTEGER NOT NULL DEFAULT 0, score INTEGER NOT NULL DEFAULT 0, finished INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL, PRIMARY KEY(user_id, game_id));
 CREATE TABLE IF NOT EXISTS mastery(user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, concept TEXT NOT NULL, m REAL NOT NULL, attempts INTEGER NOT NULL, correct INTEGER NOT NULL, streak INTEGER NOT NULL, last_ts INTEGER NOT NULL, PRIMARY KEY(user_id, game_id, concept));
 """
 PG_SCHEMA = [
-    "CREATE TABLE IF NOT EXISTS users(id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, pw_hash TEXT NOT NULL, gender TEXT NOT NULL DEFAULT 'm', settings TEXT NOT NULL DEFAULT '{}', created BIGINT NOT NULL, email TEXT, google_sub TEXT)",
+    "CREATE TABLE IF NOT EXISTS users(id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, pw_hash TEXT NOT NULL, gender TEXT NOT NULL DEFAULT 'm', settings TEXT NOT NULL DEFAULT '{}', created BIGINT NOT NULL, email TEXT, google_sub TEXT, last_login BIGINT)",
     "CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires BIGINT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS games(id TEXT PRIMARY KEY, owner_id BIGINT REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, created BIGINT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS scripts(id TEXT PRIMARY KEY, body TEXT NOT NULL, created BIGINT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS events(id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, chapter TEXT, kind TEXT, qid TEXT, concept TEXT, correct INTEGER NOT NULL, difficulty INTEGER, ms INTEGER, hints INTEGER, ts BIGINT NOT NULL)",
     "CREATE INDEX IF NOT EXISTS ev_user ON events(user_id, id)",
+    "CREATE TABLE IF NOT EXISTS resets(token_hash TEXT PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires BIGINT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS tickets(id BIGSERIAL PRIMARY KEY, user_id BIGINT REFERENCES users(id) ON DELETE SET NULL, email TEXT NOT NULL, category TEXT NOT NULL, subject TEXT NOT NULL, message TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', created BIGINT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS progress(user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, chapter_idx INTEGER NOT NULL DEFAULT 0, score INTEGER NOT NULL DEFAULT 0, finished INTEGER NOT NULL DEFAULT 0, updated BIGINT NOT NULL, PRIMARY KEY(user_id, game_id))",
     "CREATE TABLE IF NOT EXISTS mastery(user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, concept TEXT NOT NULL, m DOUBLE PRECISION NOT NULL, attempts INTEGER NOT NULL, correct INTEGER NOT NULL, streak INTEGER NOT NULL, last_ts BIGINT NOT NULL, PRIMARY KEY(user_id, game_id, concept))",
 ]
-STARTER_SQL = "INSERT INTO games(id, owner_id, title, created) VALUES(?, NULL, 'Photosynthesis (demo game)', ?) ON CONFLICT(id) DO NOTHING"
 
 
 def _sql(sql):
@@ -64,18 +66,21 @@ def _connect():
         for st in PG_SCHEMA:
             c.execute(st)
         c.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_name_ci ON users(lower(username))")
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_email_ci ON users(lower(email)) WHERE email IS NOT NULL")
     else:
         c = sqlite3.connect(str(DATA / "arcana.db"), check_same_thread=False, isolation_level=None)
         c.row_factory = sqlite3.Row
         c.execute("PRAGMA journal_mode=WAL")
         c.execute("PRAGMA foreign_keys=ON")
         c.executescript(SQLITE_SCHEMA)
-        for col in ("email TEXT", "google_sub TEXT"):
+        for col in ("email TEXT", "google_sub TEXT", "last_login INTEGER"):
             try:
                 c.execute("ALTER TABLE users ADD COLUMN " + col)
             except sqlite3.OperationalError:
                 pass
-    c.execute(_sql(STARTER_SQL), (STARTER, int(time.time())))
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_email_ci ON users(lower(email)) WHERE email IS NOT NULL")
+    for t in ("games", "events", "mastery", "progress"):        # the old shared demo game no longer exists
+        c.execute(_sql(f"DELETE FROM {t} WHERE " + ("id" if t == "games" else "game_id") + "=?"), ("starter",))
     return c
 
 
@@ -116,9 +121,9 @@ def q(sql, args=(), one=False):
 
 
 def run(sql, args=()):
-    """Run a write. For an INSERT into users the new id is returned (both databases)."""
+    """Run a write. For an INSERT into users or tickets the new id is returned (both databases)."""
     with _lock:
-        if PG and sql.lstrip().upper().startswith("INSERT INTO USERS"):
+        if PG and sql.lstrip().upper().startswith(("INSERT INTO USERS", "INSERT INTO TICKETS")):
             return _exec(sql + " RETURNING id", args).fetchone()["id"]
         return _exec(sql, args).lastrowid if not PG else (_exec(sql, args) and None)
 
@@ -152,11 +157,60 @@ def check_password(pw: str, stored: str) -> bool:
 
 
 # ---------------------------------------------------------------- accounts + sessions
-def create_user(username, pw, gender="m"):
+def create_user(username, pw, gender="m", email=None):
     try:
-        return run("INSERT INTO users(username,pw_hash,gender,created) VALUES(?,?,?,?)", (username, hash_password(pw), "f" if gender == "f" else "m", int(time.time())))
+        return run("INSERT INTO users(username,pw_hash,gender,created,email,last_login) VALUES(?,?,?,?,?,?)",
+                   (username, hash_password(pw), "f" if gender == "f" else "m", int(time.time()), (email or "").lower() or None, int(time.time())))
     except INTEGRITY:
         return None
+
+
+def email_taken(email):
+    return q("SELECT 1 FROM users WHERE lower(email)=lower(?)", (email,), one=True) is not None
+
+
+def username_taken(name):
+    return q("SELECT 1 FROM users WHERE lower(username)=lower(?)", (name,), one=True) is not None
+
+
+def set_password(user_id, pw):
+    run("UPDATE users SET pw_hash=? WHERE id=?", (hash_password(pw), user_id))
+
+
+def drop_sessions(user_id, keep=None):
+    if keep:
+        run("DELETE FROM sessions WHERE user_id=? AND token<>?", (user_id, keep))
+    else:
+        run("DELETE FROM sessions WHERE user_id=?", (user_id,))
+
+
+def make_reset(user_id, minutes=60):
+    tok = secrets.token_urlsafe(32)
+    run("DELETE FROM resets WHERE user_id=?", (user_id,))
+    run("INSERT INTO resets(token_hash,user_id,expires) VALUES(?,?,?)", (hashlib.sha256(tok.encode()).hexdigest(), user_id, int(time.time()) + minutes * 60))
+    return tok
+
+
+def use_reset(tok):
+    """Returns the user id for a valid, unexpired reset token and burns it."""
+    h = hashlib.sha256(str(tok).encode()).hexdigest()
+    row = q("SELECT * FROM resets WHERE token_hash=? AND expires>?", (h, int(time.time())), one=True)
+    run("DELETE FROM resets WHERE token_hash=?", (h,))
+    return row["user_id"] if row else None
+
+
+def add_ticket(user_id, email, category, subject, message):
+    return run("INSERT INTO tickets(user_id,email,category,subject,message,created) VALUES(?,?,?,?,?,?)", (user_id, email, category, subject, message, int(time.time())))
+
+
+def export_user(user_id):
+    """Everything stored about one student (for the 'download my data' button)."""
+    u = q("SELECT id,username,email,gender,created,last_login FROM users WHERE id=?", (user_id,), one=True)
+    return {"account": dict(u), "games": [dict(r) for r in q("SELECT id,title,created FROM games WHERE owner_id=?", (user_id,))],
+            "progress": [dict(r) for r in q("SELECT * FROM progress WHERE user_id=?", (user_id,))],
+            "mastery": [dict(r) for r in q("SELECT * FROM mastery WHERE user_id=?", (user_id,))],
+            "answers": [dict(r) for r in q("SELECT game_id,chapter,kind,qid,concept,correct,difficulty,ms,hints,ts FROM events WHERE user_id=? ORDER BY id", (user_id,))],
+            "supportTickets": [dict(r) for r in q("SELECT id,category,subject,message,status,created FROM tickets WHERE user_id=?", (user_id,))]}
 
 
 def google_user(sub, email, name_hint):
@@ -177,10 +231,14 @@ def google_user(sub, email, name_hint):
     return None
 
 
-def login(username, pw):
-    row = q("SELECT * FROM users WHERE lower(username)=lower(?)", (username,), one=True)
+def login(ident, pw):
+    """ident is an email address or a username."""
+    row = q("SELECT * FROM users WHERE lower(username)=lower(?) OR lower(email)=lower(?)", (ident, ident), one=True)
     ok = check_password(pw, row["pw_hash"]) if row else check_password(pw, "scrypt$00$00")      # same work either way
-    return row if (row and ok) else None
+    if row and ok:
+        run("UPDATE users SET last_login=? WHERE id=?", (int(time.time()), row["id"]))
+        return row
+    return None
 
 
 def new_session(user_id):
@@ -210,13 +268,13 @@ def save_settings(user_id, d):
     run("UPDATE users SET settings=? WHERE id=?", (json.dumps(d), user_id))
 
 
-# ---------------------------------------------------------------- games (private to the owner; the starter game is shared)
+# ---------------------------------------------------------------- games (each one is private to the student who uploaded it)
 def add_game(game_id, owner_id, title):
     run("INSERT INTO games(id,owner_id,title,created) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET owner_id=excluded.owner_id, title=excluded.title, created=excluded.created", (game_id, owner_id, title, int(time.time())))
 
 
 def can_use_game(user_id, game_id):
-    return q("SELECT 1 FROM games WHERE id=? AND (owner_id IS NULL OR owner_id=?)", (game_id, user_id), one=True) is not None
+    return q("SELECT 1 FROM games WHERE id=? AND owner_id=?", (game_id, user_id), one=True) is not None
 
 
 def games_today(user_id):

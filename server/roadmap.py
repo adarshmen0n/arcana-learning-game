@@ -53,7 +53,7 @@ def stats(user):
     for r in rows:
         per.setdefault(r["concept"] + "|" + r["game_id"], r)
     names = {}
-    for g in db.q("SELECT id FROM games WHERE owner_id IS NULL OR owner_id=?", (user["id"],)):
+    for g in db.q("SELECT id FROM games WHERE owner_id=?", (user["id"],)):
         for ch in _script(g["id"])["chapters"]:
             for k in ch.get("concepts", []):
                 names[(g["id"], k["id"])] = k["name"]
@@ -75,7 +75,7 @@ def build(user):
     achievements = {"First game": False, "First boss defeated": False, "Sharp mind (80%+ over 30 answers)": False, "Finished a game": False, "Five concepts mastered": False}
     mrows = db.mastery_rows(user["id"])
     st = M.summarize(db.recent_events(user["id"], None, 400))
-    for g in db.q("SELECT * FROM games WHERE owner_id IS NULL OR owner_id=? ORDER BY (owner_id IS NULL) DESC, created", (user["id"],)):
+    for g in db.q("SELECT * FROM games WHERE owner_id=? ORDER BY created", (user["id"],)):
         sc = _script(g["id"])
         p = db.q("SELECT * FROM progress WHERE user_id=? AND game_id=?", (user["id"], g["id"]), one=True)
         done_idx, finished = (p["chapter_idx"], bool(p["finished"])) if p else (0, False)
@@ -100,7 +100,7 @@ def build(user):
                 status = "review"
             nodes.append({"index": i, "title": "Final boss" if final else ch["title"], "goal": "Face the final exam" if final else ch.get("goal", ""), "theme": (sc.get("finalBoss", {}).get("theme") if final else ch.get("theme")) or {}, "final": final, "status": status, "mastery": avg, "concepts": cs})
         cur = next((n for n in nodes if n["status"] == "current"), None)
-        games.append({"id": g["id"], "title": sc.get("title") or g["title"], "starter": g["owner_id"] is None, "finished": finished, "score": p["score"] if p else 0, "nodes": nodes, "chapters": len(chapters)})
+        games.append({"id": g["id"], "title": sc.get("title") or g["title"], "finished": finished, "score": p["score"] if p else 0, "nodes": nodes, "chapters": len(chapters)})
         if cur and not finished:
             recs.append({"kind": "continue", "text": f"Continue \"{games[-1]['title']}\": {cur['title']}", "game": g["id"], "weight": 2})
         for n in nodes:
@@ -118,7 +118,7 @@ def build(user):
     achievements["Five concepts mastered"] = sum(1 for r in mrows if M.effective(r["m"], r["last_ts"], now) >= 0.8) >= 5
     if not own:
         recs.append({"kind": "upload", "text": "Upload your own notes to build a personal path", "game": None, "weight": 1})
-    elif all(g["finished"] for g in games if not g["starter"]):
+    elif all(g["finished"] for g in games):
         recs.append({"kind": "upload", "text": "You finished your games. Upload new material to extend your roadmap", "game": None, "weight": 1})
     recs.sort(key=lambda r: -r["weight"])
     return {"games": games, "next": recs[:5], "achievements": [{"name": k, "earned": v} for k, v in achievements.items()]}

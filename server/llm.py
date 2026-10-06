@@ -303,6 +303,8 @@ class CompatProvider(Provider):
         except Exception:
             ids = []
         skip = ("embed", "whisper", "tts", "guard", "safety", "moderation", "image", "vision-preview", "audio", "orpheus", "rerank", "imagen", "veo", "aqa", "customtools", "live", "omni", "lite", "nano", "thinkingmachines")
+        if self.name == "gemini":
+            skip = tuple(x for x in skip if x != "lite")             # the lite models are a good fallback when the main one is busy
         ids = [i for i in ids if i and i not in self.bad and not any(s in i.lower() for s in skip)]
         if self.name.startswith("openrouter"):
             ids = [i for i in ids if i.endswith(":free")]
@@ -343,12 +345,32 @@ class CompatProvider(Provider):
                     self.bad.add(self.model)
                     self.model = None
                 raise Skip("model unavailable; trying another", cooldown=0)
+            if e.code == 400 and "reasoning" in low:
+                self.no_reason = True
+                raise Skip("model unavailable; retrying without reasoning setting", cooldown=0)
             if e.code == 400 and "response_format" in low:
                 self.no_json = True
                 raise Skip("json mode unsupported", cooldown=0)
+            if e.code in (500, 502, 503, 504) and self.model and not os.environ.get(self.model_env or "_"):      # this model is overloaded: try another one for a while
+                m = self.model; self.bad.add(m); self.model = None
+                t = threading.Timer(600, lambda: self.bad.discard(m)); t.daemon = True; t.start()
+                raise Skip("model busy; trying another", cooldown=0)
             raise Skip(f"HTTP {e.code}", cooldown=20 if e.code >= 500 else 0)
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
             raise Skip("cannot reach the service", cooldown=20)
+
+    def _post_any_model(self, body):
+        """Post; if the chosen model is busy or retired, pick the next usable model and try again (a few times)."""
+        for n in range(4):
+            try:
+                return self._post(body)
+            except Skip as sk:
+                if n < 3 and str(sk).startswith(("model busy", "model unavailable")):
+                    body["model"] = self.resolve_model()
+                    if getattr(self, "no_reason", False):
+                        body.pop("reasoning_effort", None)
+                    continue
+                raise
 
     def json(self, system, user, schema, doc, max_tokens, effort, tally):
         model = self.resolve_model()
@@ -358,9 +380,11 @@ class CompatProvider(Provider):
         last = "malformed JSON"
         for attempt in range(2):
             body = {"model": model, "messages": msgs, "temperature": 0.4, "max_tokens": min(max_tokens, self.out_cap)}
+            if self.name == "gemini" and not getattr(self, "no_reason", False):
+                body["reasoning_effort"] = "low"          # newer Gemini models think first; keep that short so the answer is not cut off
             if self.json_mode and not self.no_json:
                 body["response_format"] = {"type": "json_object"}
-            r = self._post(body)
+            r = self._post_any_model(body)
             u = r.get("usage") or {}
             _track(tally, u.get("prompt_tokens", 0), u.get("completion_tokens", 0))
             ch = (r.get("choices") or [{}])[0]

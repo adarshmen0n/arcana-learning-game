@@ -19,7 +19,7 @@ const Combat = (() => {
     const seen = new Set(), uniq = facts.filter((f) => !seen.has(f.text) && seen.add(f.text));
     for (let i = uniq.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [uniq[i], uniq[j]] = [uniq[j], uniq[i]]; }
     const d = (adapt && adapt.difficulty) || 3, n = Math.max(2, (index === 0 ? 2 : 3) + (d >= 4 ? 1 : 0) - (d <= 2 ? 1 : 0));
-    const kinds = index === 0 ? ["brute", "brute", "brute", "brute"] : ["brute", "caster", "brute", "dasher", "caster"];
+    const kinds = index === 0 && (G.chapterIdx || 0) < 1 ? ["brute", "brute", "brute", "brute"] : ["brute", "caster", "brute", "dasher", "caster"];
     const suffix = ["Thrall", "Wraith", "Sentinel", "Shade", "Revenant"];
     const enemies = Array.from({ length: n }, (_, i) => {
       const f = uniq[i % Math.max(1, uniq.length)] || { concept: "Knowledge", text: "Keep learning: every fact you collect makes the next fight easier." };
@@ -90,7 +90,7 @@ const Combat = (() => {
     const bar = scene.add.graphics(), ui = scene.add.container(x, GROUND + 6).setDepth(12); ui.add([label, bar]);
     const e = { spec, kind: spec.kind, rig, sc, x, vx: 0, label, bar, ui, state: "spawn", t: 0, cool: rnd(0.8, 1.8), hp: 0, maxHp: 0, tint: 0, hurtT: 0, hit: false,
       speed: (spec.kind === "caster" ? 120 : 105) * (0.85 + 0.07 * d), dmg: (spec.kind === "dasher" ? 13 : spec.kind === "caster" ? 9 : 10) * (0.7 + 0.15 * d), wind: Math.max(0.32, 0.72 - 0.06 * d) };
-    e.maxHp = e.hp = Math.round((spec.kind === "caster" ? 55 : 80) * (0.8 + 0.12 * d));
+    const lvl = 1 + 0.1 * (G.chapterIdx || 0); e.dmg *= 1 + 0.05 * (G.chapterIdx || 0); e.maxHp = e.hp = Math.round((spec.kind === "caster" ? 55 : 80) * (0.8 + 0.12 * d) * lvl);
     return e;
   }
   function drawBar(e) { const w = 70; e.bar.clear().fillStyle(0x000000, 0.7).fillRect(-w / 2, -(170 * e.sc) - 8, w, 6).fillStyle(0xff3b5c, 1).fillRect(-w / 2 + 1, -(170 * e.sc) - 7, (w - 2) * Math.max(0, e.hp / e.maxHp), 4); }

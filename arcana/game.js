@@ -373,12 +373,27 @@ async function playScene(scene, ch, ent) {
   else if (s.type === "final_boss") await fightBoss(scene, ent, pickQs([...SCRIPT.chapters.flatMap(questionsOf), ...(SCRIPT.finalBoss.extraQuestions || [])], s.count), clamp(s.passMarkRatio + A().bossRatioDelta, 0.5, 0.9), "Final boss");
 }
 
+// Personal review: when a topic keeps going wrong, the server writes a short extra lesson + fresh questions from the stored source.
+G.reviewed = new Set(); G.reviewJob = null;
+async function startReview() {
+  try {
+    const w = (A().weak || []).filter((x) => x.mastery < 0.5 && !G.reviewed.has(x.id))[0]; if (!w) return null;
+    G.reviewed.add(w.id);
+    let s = await UI.api("/api/remedial", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gameId: Track.gameId, concept: w.id }) }).catch(() => null);
+    for (let i = 0; i < 30 && s && s.status === "running"; i++) { await UI.sleep(2500); s = await UI.api("/api/remedial?game=" + encodeURIComponent(Track.gameId) + "&concept=" + encodeURIComponent(w.id)).catch(() => null); }
+    return s && s.status === "done" ? s : null;
+  } catch (e) { return null; }
+}
 async function playChapter(scene, ch, idx, total, at = 0) {
   await Track.flush(); await loadAdapt(); await loadHero();                       // the setup follows the latest performance
   if (ch.id !== "final" && !ch._practiced) {                    // add a practice station for this student's weak topics
     ch._practiced = true;
     const pool = SCRIPT.chapters.flatMap(questionsOf), qs = (A().practice || []).map((id) => pool.find((q) => q.id === id)).filter(Boolean).slice(0, 4);
     if (qs.length >= 2) ch.scenes = [...ch.scenes.slice(0, -1), { type: "level_test", id: ch.id + "-practice", practice: true, questions: qs, passMark: 0 }, ch.scenes[ch.scenes.length - 1]];
+  }
+  if (ch.id !== "final" && !ch._review && G.reviewJob) {        // the review written while the last chapter ended
+    ch._review = true; const rv = await Promise.race([G.reviewJob, UI.sleep(20000).then(() => null)]); G.reviewJob = null;
+    if (rv && rv.scenes) { ch.scenes.splice(0, 0, rv.scenes[0]); ch.scenes.splice(ch.scenes.length - 1, 0, rv.scenes[1]); UI.toast("Personal review added: " + rv.concept); }
   }
   if (ch.id !== "final" && !ch._combat) {                       // real-time fights built from this chapter's own material
     ch._combat = true; const sc = ch.scenes, n1 = sc.findIndex((s) => s.type === "npc");
@@ -396,6 +411,7 @@ async function playChapter(scene, ch, idx, total, at = 0) {
   await scene.waitExit();
   if (ch.id === "final") return;
   const stars = G.chapterMistakes === 0 ? 3 : G.chapterMistakes <= 3 ? 2 : 1;
+  await Track.flush(); await loadAdapt(); G.reviewJob = startReview();                 // written in the background while the chapter summary is read
   Sound.win(); await UI.card(`<div class="kicker">Chapter complete</div><h1>${UI.esc(ch.title)}</h1><div class="stars">${"★".repeat(stars)}${"☆".repeat(3 - stars)}</div><p>Score ${G.score}</p>`, "Next zone");
 }
 
@@ -447,6 +463,7 @@ async function main(scene) {
   if (resume) G.score = resume.score || 0;
   await UI.title(SCRIPT, { name: me.username, resume });
   UI.onAnswer = (ok, q, x) => { Track.add(q, ok, x); if (!ok && q && !G.missed.find((m) => m.id === q.id)) G.missed.push(q); G.streak = ok ? (G.streak || 0) + 1 : 0; if (ok && G.streak >= 3) UI.combo(G.streak); refreshHud(); };
+  UI.onReport = (q) => { Track.send("/api/report", { gameId: Track.gameId, qid: q.id, prompt: q.prompt }); UI.toast("Thanks. It is removed from your practice and we will check it."); };
   UI.hideTitle(); scene.setHero(G.gender); UI.setPlayer(me.username, G.gender); Track.start(gid);
   let total = SCRIPT.chapters.length;
   if (LIVE) { const j = await UI.api("/api/jobs/" + LIVE); total = j.total || total; if (j.status === "done") LIVE = null; }

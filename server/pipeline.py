@@ -11,6 +11,7 @@ import uuid
 
 import ingest
 import llm
+import student
 import retrieval
 import mockgen
 
@@ -41,7 +42,8 @@ def ARR(items):
     return {"type": "array", "items": items}
 
 
-QUESTION = _obj({"prompt": S, "options": ARR(S), "correct_index": I, "explanation": S, "concept_id": S, "difficulty": I})
+QUESTION = _obj({"prompt": S, "options": ARR(S), "correct_index": I, "explanation": S, "concept_id": S, "difficulty": I, "evidence": S, "skill": S},
+                required=["prompt", "options", "correct_index", "explanation", "concept_id", "difficulty"])   # evidence and skill are optional so a weaker model is not rejected for omitting them
 ANALYZE_SCHEMA = _obj({
     "title": S, "subject": S, "level": {"type": "string", "enum": ["primary", "school", "college", "professional"]}, "summary": S, "final_boss_name": S,
     "concepts": ARR(_obj({"id": S, "name": S, "summary": S, "importance": I, "complexity": I, "needs_research": B, "research_query": S})),
@@ -53,7 +55,8 @@ LESSON_SCHEMA = _obj({
     "mission": _obj({"kind": {"type": "string", "enum": ["order", "match_pairs"]}, "instruction": S, "items": ARR(S),
                      "pairs": ARR(_obj({"term": S, "definition": S}))}),
 })
-QUESTION_SET = _obj({"obstacles": ARR(_obj({"question": QUESTION, "hint": S})), "match": ARR(QUESTION), "arcade": ARR(QUESTION), "test": ARR(QUESTION), "spare": ARR(QUESTION)})
+QUESTION_SET_A = _obj({"obstacles": ARR(_obj({"question": QUESTION, "hint": S})), "match": ARR(QUESTION), "arcade": ARR(QUESTION)})
+QUESTION_SET_B = _obj({"test": ARR(QUESTION), "spare": ARR(QUESTION)})
 VERIFY_SCHEMA = _obj({"results": ARR(_obj({"id": S, "valid": B, "correct_index": I, "issue": S}))})
 
 SYS = ("You are the content designer for ARCANA AI, a game that teaches study material through play. "
@@ -145,6 +148,7 @@ def _run(job: Job):
         db.save_script(job.id, job.script)
         if job.opts.get("owner"):
             db.add_game(job.id, job.opts["owner"], job.script["title"])
+            db.save_source(job.id, text)                 # kept so a personal review can be written from the same material later
         job.pct, job.status = 100, "done"
         job.set("done", 100, "Your game is ready")
     except (ingest.IngestError, llm.LLMError, PipelineError, ValueError) as e:
@@ -169,7 +173,7 @@ def _ai(job: Job, text: str):
               "mood picks the world: science (lab, chemistry, technology, anatomy), nature (living things, ecology, geography), conflict (war, politics, law, crime), history (ancient civilisations, culture, religion, literature), abstract (maths, physics, astronomy, logic, computing). Vary the moods across chapters when the material allows. "
               "fight: 'magic' for abstract/energy/theory topics, 'martial' for physical/historical/practical topics. "
               "boss_name: a menacing villain name (a warlord, sorcerer, beast-knight or similar) that fits the chapter (2-3 words). npc_names: two friendly human mentor names.\n"
-              "- final_boss_name: the villain of the final exam. summary: 2 sentences.")
+              "- final_boss_name: the villain of the final exam. summary: 2 sentences." + student.prompt_block(job.opts.get("profile")))
     plan = clean_plan(llm.call_json(SYS, prompt, ANALYZE_SCHEMA, doc=doc_block(text), max_tokens=12000, tally=tally, log=job.log))
     job.total = len(plan["chapters"])
     job.script = {"schemaVersion": 1, "projectId": job.id, "title": plan["title"], "audience": {"level": plan["level"], "modes": ["student"]},
@@ -208,13 +212,20 @@ def _ai(job: Job, text: str):
         return doc_block(index.context(query, 1800), notes)
 
     def build(i):
-        for attempt in (1, 2):
+        for attempt in range(1, 5):
             try:
                 return gen_chapter(job, plan, i, doc_for(i), index)
             except llm.LLMError as e:
-                if attempt == 2 or "rejected" in str(e) or "declined" in str(e):
+                msg = str(e)
+                if attempt == 4 or "rejected" in msg or "declined" in msg:
                     raise
-                job.log(f"Chapter {i + 1} retry: {e}")
+                m = re.search(r"in about (\d+) seconds", msg)
+                wait = min(int(m.group(1)) + 2, 150) if m else 0
+                if m and int(m.group(1)) > 240:
+                    raise                                              # the quota is gone for a long time: say so instead of hanging
+                job.log(f"Chapter {i + 1} retry{f' in {wait}s (the free AI services need a short rest)' if wait else ''}: {msg[:120]}")
+                if wait:
+                    time.sleep(wait)
 
     job.set("chapter1", 30, "Forging chapter 1")
     job.chapters[0] = build(0)
@@ -255,22 +266,27 @@ def gen_chapter(job, plan, i, doc, index=None):
     ch, byid = plan["chapters"][i], {c["id"]: c for c in plan["concepts"]}
     cons = [byid[c] for c in ch["concept_ids"] if c in byid]
     listing = "\n".join(f"- {c['id']} {c['name']}: {c['summary']}" for c in cons)
-    head = f"Chapter {i + 1} of {len(plan['chapters'])}: \"{ch['title']}\". Goal: {ch['goal']}. Audience level: {plan['level']}.\nConcepts:\n{listing}\n\n"
+    head = f"Chapter {i + 1} of {len(plan['chapters'])}: \"{ch['title']}\". Goal: {ch['goal']}. Audience level: {plan['level']}.\nConcepts:\n{listing}\n" + student.prompt_block(job.opts.get("profile")) + "\n"
     lessons = (head + "Produce:\n- npcs: 2 human mentors (names: " + ", ".join(ch["npc_names"][:2]) + "). Each speaks 3-4 short lines (max 220 characters each) that TEACH the concepts directly "
                "from the material, in vivid plain language with an analogy or example. highlight: 1-3 key terms that appear verbatim in that line. "
                "teacher_note: one classroom tip, max 160 characters. concept_ids: the concepts that mentor covers.\n"
                "- mission: if the concepts contain a process or sequence use kind 'order' with 4-6 steps in the CORRECT order (items), pairs empty; "
                "otherwise kind 'match_pairs' with 4 term/definition pairs (short definitions, max 70 characters), items empty.")
-    qrules = (head + "Write quiz questions for this chapter.\n- obstacles: 2 questions, each with a hint that nudges without revealing the answer.\n"
-              "- match: 5 questions. test: 5 questions. arcade: 3 questions. spare: 3 extra questions.\n\n"
-              "Question rules: four options (each max 80 characters), exactly one correct, plausible distractors built from real misconceptions or neighbouring concepts, "
-              "never 'all of the above' or 'none of the above'. correct_index is 0-3 and MUST vary across questions. "
-              "Every question must be answerable from the material alone (no outside trivia). Difficulty 1-3 rising through the chapter. "
-              "explanation: one sentence stating why the answer is right. concept_id must be one of the concept ids above. Never repeat a question.")
+    rules = ("Question rules: four options (each max 80 characters), exactly one correct, plausible distractors built from real misconceptions or neighbouring concepts, "
+             "never 'all of the above' or 'none of the above'. correct_index is 0-3 and MUST vary across questions. "
+             "Every question must be answerable from the material alone (no outside trivia). Difficulty 1-3 rising through the chapter. "
+             "explanation: one sentence stating why the answer is right. concept_id must be one of the concept ids above. "
+             "evidence: a short VERBATIM quote (max 160 characters) copied from the study material that proves the correct answer; never invent it. "
+             "skill: recall, understand, apply or analyze, mixed across the set, with the harder skills toward the end. Never repeat a question.")
+    qa = head + "Write quiz questions for this chapter.\n- obstacles: 2 questions, each with a hint that nudges without revealing the answer.\n- match: 5 questions. arcade: 3 questions.\n\n" + rules
+    qb = head + "Write more quiz questions for this chapter (test understanding and application).\n- test: 5 questions. spare: 2 extra questions.\n\n" + rules
+
     job.log(f"Writing chapter {i + 1}")
     gen = llm.call_json(SYS, lessons, LESSON_SCHEMA, doc=doc, max_tokens=8000, tally=job.usage, log=job.log)
-    gen.update(llm.call_json(SYS, qrules, QUESTION_SET, doc=doc, max_tokens=12000, tally=job.usage, log=job.log))
+    gen.update(llm.call_json(SYS, qa, QUESTION_SET_A, doc=doc, max_tokens=7000, tally=job.usage, log=job.log))
+    gen.update(llm.call_json(SYS, qb, QUESTION_SET_B, doc=doc, max_tokens=6000, tally=job.usage, log=job.log))
     gen = verify(job, gen, doc, i)
+    gen = dedupe(job, gen, i)
     if index is not None:
         gen = ground(job, gen, index, i)
     return assemble_chapter(i, len(plan["chapters"]), ch, cons, gen, plan["level"])
@@ -303,13 +319,49 @@ def verify(job, gen, doc, i):
     return gen
 
 
+def supported(index, q):
+    """True when the uploaded material backs this question: its quoted evidence is really in the text, and its words are found together."""
+    try:
+        stmt = q["prompt"] + " " + q["options"][q["correct_index"]] + " " + (q.get("explanation") or "")
+    except (KeyError, IndexError, TypeError):
+        return False
+    if index.support(stmt) < 0.3:
+        return False
+    ev = (q.get("evidence") or "").strip()
+    return not ev or len(ev) < 15 or index.support(ev) >= 0.6
+
+
+def dedupe(job, gen, i):
+    """Drop near-duplicate questions (same idea asked twice) as long as enough remain."""
+    import difflib
+    groups = [("obstacles", None)] + [(k, None) for k in ("match", "arcade", "test", "spare")]
+    kept, drop = [], set()
+    def qs():
+        for o in gen["obstacles"]:
+            yield o["question"]
+        for k in ("match", "arcade", "test", "spare"):
+            yield from gen[k]
+    for q in qs():
+        t = re.sub(r"\W+", " ", q["prompt"].lower()).strip()
+        if any(difflib.SequenceMatcher(None, t, k).ratio() > 0.72 for k in kept):
+            drop.add(id(q))
+        else:
+            kept.append(t)
+    total = len(kept) + len(drop)
+    if not drop or total - len(drop) < 8:
+        return gen
+    gen["obstacles"] = [o for o in gen["obstacles"] if id(o["question"]) not in drop]
+    for k in ("match", "arcade", "test", "spare"):
+        gen[k] = [q for q in gen[k] if id(q) not in drop]
+    job.log(f"Chapter {i + 1}: removed {len(drop)} repeated questions")
+    return gen
+
+
 def ground(job, gen, index, i):
     """Drop questions the uploaded material does not support (retrieval check), keeping enough to play."""
-    def support(q):
-        return index.support(q["prompt"] + " " + q["options"][q["correct_index"]] + " " + q.get("explanation", ""))
     groups = [[o["question"] for o in gen["obstacles"]]] + [gen[k] for k in ("match", "arcade", "test", "spare")]
     total = sum(len(g) for g in groups)
-    weak = {id(q) for g in groups for q in g if support(q) < 0.3}
+    weak = {id(q) for g in groups for q in g if not supported(index, q)}
     if total - len(weak) < 8:
         job.log(f"Chapter {i + 1}: grounding check kept all {total} (too few would remain)")
         return gen
@@ -367,8 +419,14 @@ def norm_q(q, concept_ids):
         diff = max(1, min(3, int(q.get("difficulty") or 1)))
     except (TypeError, ValueError):
         diff = 1
-    return {"id": qid, "conceptId": cid, "prompt": prompt[:300], "options": opts, "correctIndex": opts.index(correct),
-            "explanation": str(q.get("explanation", "")).strip()[:300], "difficulty": diff}
+    out = {"id": qid, "conceptId": cid, "prompt": prompt[:300], "options": opts, "correctIndex": opts.index(correct),
+           "explanation": str(q.get("explanation", "")).strip()[:300], "difficulty": diff}
+    ev = re.sub(r"\s+", " ", str(q.get("evidence", ""))).strip()[:240]
+    if ev:
+        out["evidence"] = ev                                                 # the sentence of the student's own material that backs the answer
+    if q.get("skill") in ("recall", "understand", "apply", "analyze"):
+        out["skill"] = q["skill"]
+    return out
 
 
 def assemble_chapter(i, n, ch, cons, gen, level):

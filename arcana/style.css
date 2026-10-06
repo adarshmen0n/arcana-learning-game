@@ -334,3 +334,6 @@ html, body { overscroll-behavior: none; touch-action: manipulation; }
 @media (pointer: coarse) { #ctouch { display: grid !important; grid-template-columns: repeat(4, 1fr); gap: 1cqw; position: absolute; right: 2cqw; bottom: 9cqw; width: 36cqw; pointer-events: auto; } #ctouch button { padding: 1.4cqw 0; font: 900 1.6cqw var(--head); background: rgba(2,10,4,.8); color: var(--neon); border: 1.5px solid rgba(57,255,20,.6); } #ctouch button small { display: block; font-size: .6cqw; letter-spacing: .1em; } #ctouch button.on { background: var(--neon); color: #021; } }
 .opt.struck { opacity: .25; text-decoration: line-through; pointer-events: none; }
 .facts { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; text-align: left; } .facts li { border-left: 3px solid #5eead4; padding: 4px 10px; background: rgba(94,234,212,.06); } .facts b { display: block; color: #5eead4; font-size: 12px; letter-spacing: .18em; text-transform: uppercase; font-family: var(--head); } .facts span { font-size: 1.05em; }
+
+.evi { margin-top: 8px; padding: 6px 10px; border-left: 3px solid #5eead4; background: rgba(94,234,212,.07); font-size: .95em; color: #cfeee9; } .evi b { display: block; font: 700 .72em var(--head); letter-spacing: .22em; color: #5eead4; text-transform: uppercase; }
+#actions #rep { margin-right: auto; opacity: .7; font-size: .8em; }

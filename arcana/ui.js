@@ -239,8 +239,10 @@ const UI = (() => {
         correct ? Sound.correct() : Sound.wrong(); if (self.onAnswer) self.onAnswer(correct, q, { ms: Date.now() - t0, hints: !correct && hint && !reveal ? 1 : 0 });
         let fb = correct ? "✔ Correct!" : "✖ Not quite."; if (!correct && hint && !reveal) fb += ` Hint: ${esc(hint)}`;
         if (q.explanation && (correct || reveal || explain)) fb += ` ${esc(q.explanation)}`;
+        if (q.evidence && (correct || reveal || explain)) fb += `<div class="evi"><b>From your notes</b> &ldquo;${esc(q.evidence)}&rdquo;</div>`;
         p.querySelector("#fb").innerHTML = `<div class="feedback ${correct ? "" : "bad"}">${fb}</div>`;
-        p.querySelector("#actions").innerHTML = `<button class="btn primary" id="go">${cta || (!correct && !reveal ? "Try again" : "Continue")}</button>`;
+        p.querySelector("#actions").innerHTML = `<button class="btn" id="rep" title="Tell us this question is wrong or unclear">Report</button><button class="btn primary" id="go">${cta || (!correct && !reveal ? "Try again" : "Continue")}</button>`;
+        p.querySelector("#rep").onclick = (ev) => { ev.currentTarget.disabled = true; ev.currentTarget.textContent = "Thanks"; self.onReport && self.onReport(q); };
         const go = () => { hide(); resolve({ correct, conceptId: q.conceptId }); };
         p.querySelector("#go").onclick = go; p.querySelector("#go").focus(); onKey((e) => isGo(e) && (e.preventDefault(), go()));
       };
@@ -277,6 +279,6 @@ const UI = (() => {
   }
   const bars = (rows) => `<div class="bars">${rows.map((r) => `<div class="bar"><span>${esc(r.label)}</span><div class="track"><div class="fill ${r.cls}" style="width:${r.pct}%"></div></div><span>${esc(r.val)}</span></div>`).join("")}</div>`;
 
-  const self = { onAnswer: null, combo, icon, setPlayer, api, $, sleep, esc, shuffle, show, hide, card, choice, title, hideTitle, hud, hideHud, hint, bossBar, toast, flash, touch, wipe, cine, chapterCard, dialogue, ask, missionOrder, missionPairs, bars, controlsHTML, setScene: (s) => (sceneRef = s) };
+  const self = { onAnswer: null, onReport: null, combo, icon, setPlayer, api, $, sleep, esc, shuffle, show, hide, card, choice, title, hideTitle, hud, hideHud, hint, bossBar, toast, flash, touch, wipe, cine, chapterCard, dialogue, ask, missionOrder, missionPairs, bars, controlsHTML, setScene: (s) => (sceneRef = s) };
   return self;
 })();

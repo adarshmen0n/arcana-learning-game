@@ -33,7 +33,7 @@ def adaptation(user, game_id=None):
                 weak.append({"id": r["concept"], "name": names.get(r["concept"], r["concept"]), "mastery": round(e, 2)})
         weak.sort(key=lambda w: w["mastery"])
         ids = {w["id"] for w in weak[:3]}
-        seen = set()
+        seen = set(db.reported(user["id"], game_id))
         for e in db.recent_events(user["id"], game_id, 200):          # newest first: practise what was missed most recently
             if not e["correct"] and e["concept"] in ids and e["qid"] not in seen:
                 seen.add(e["qid"])

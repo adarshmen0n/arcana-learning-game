@@ -10,6 +10,8 @@ import config
 import db
 import hero
 import mail
+import student
+import remedial
 import llm
 import pipeline
 import roadmap
@@ -164,6 +166,34 @@ def hero_earn(r):
     except (TypeError, ValueError):
         raise Err(400, "Bad numbers.")
     return hero.earn(u, sh, ki)
+
+
+def remedial_start(r):
+    u = r.need()
+    limit(("remedial", u["id"]), 12, 3600)
+    gid, cid = clean(r.body.get("gameId"), 40), clean(r.body.get("concept"), 40)
+    if not db.can_use_game(u["id"], gid):
+        raise Err(403, "That game is not yours.")
+    return remedial.start(u, gid, cid)
+
+
+def remedial_status(r):
+    u = r.need()
+    gid, cid = r.q1("game"), r.q1("concept")
+    if not db.can_use_game(u["id"], gid):
+        raise Err(403, "That game is not yours.")
+    return remedial.status(u, gid, cid)
+
+
+def report_question(r):
+    u = r.need()
+    limit(("report", u["id"]), 20, 3600)
+    gid, qid, why = clean(r.body.get("gameId"), 40), clean(r.body.get("qid"), 40), clean(r.body.get("reason"), 200)
+    if not db.can_use_game(u["id"], gid) or not qid:
+        raise Err(403, "That question is not yours.")
+    db.add_report(u["id"], gid, qid, why)
+    db.add_ticket(u["id"], u["email"] or "unknown", "bug", "Question report " + qid, f"Game {gid}, question {qid}. {why}\n{clean(r.body.get('prompt'), 300)}")
+    return {"ok": True}
 
 
 def coach_get(r):
@@ -369,6 +399,10 @@ def job_create(r):
         raise Err(429, f"Daily limit reached ({config.MAX_GAMES_PER_DAY} new games per day). Try again tomorrow.")
     filename = clean(r.body.get("filename") or "notes.txt", 120)
     opts = {"offline": bool(r.body.get("offline")), "owner": u["id"]}
+    try:
+        opts["profile"] = student.build(u)           # the generator personalises to this student
+    except Exception:
+        pass
     if r.body.get("text"):
         import ingest
         job = pipeline.start(filename, text=str(r.body["text"])[:ingest.MAX_CHARS], opts=opts)
@@ -456,7 +490,7 @@ def status(r):
 ROUTES = [
     ("GET", r"/api/status", status), ("GET", r"/api/me", me),
     ("POST", r"/api/register", register), ("POST", r"/api/login", login), ("POST", r"/api/google", google_login), ("POST", r"/api/password", password_change), ("POST", r"/api/forgot", forgot), ("POST", r"/api/reset", reset), ("POST", r"/api/logout-all", logout_all), ("GET", r"/api/export", export),
-    ("POST", r"/api/support", support_create), ("GET", r"/api/support", support_mine), ("GET", r"/api/admin/tickets", admin_tickets), ("POST", r"/api/admin/tickets/([0-9]+)", admin_ticket_set), ("GET", r"/api/coach", coach_get), ("GET", r"/api/hero", hero_get), ("POST", r"/api/hero/upgrade", hero_upgrade), ("POST", r"/api/hero/equip", hero_equip), ("POST", r"/api/hero/earn", hero_earn), ("POST", r"/api/logout", logout),
+    ("POST", r"/api/support", support_create), ("GET", r"/api/support", support_mine), ("GET", r"/api/admin/tickets", admin_tickets), ("POST", r"/api/admin/tickets/([0-9]+)", admin_ticket_set), ("GET", r"/api/coach", coach_get), ("POST", r"/api/remedial", remedial_start), ("GET", r"/api/remedial", remedial_status), ("POST", r"/api/report", report_question), ("GET", r"/api/hero", hero_get), ("POST", r"/api/hero/upgrade", hero_upgrade), ("POST", r"/api/hero/equip", hero_equip), ("POST", r"/api/hero/earn", hero_earn), ("POST", r"/api/logout", logout),
     ("POST", r"/api/profile", profile_set), ("DELETE", r"/api/account", account_delete),
     ("GET", r"/api/games", games_list), ("DELETE", r"/api/games/([a-z0-9]{4,40})", game_delete),
     ("GET", r"/api/scripts/([a-z0-9]+)", script_get),

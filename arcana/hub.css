@@ -80,3 +80,20 @@ body.hub .site-foot { position: relative; z-index: 6; background: transparent; b
 /* login card matches the hub plates */
 #authbox .card.auth { border: 0; border-left: 3px solid var(--neon); background: linear-gradient(180deg, rgba(5,14,8,.9), rgba(2,7,4,.86)); clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px)); }
 #authbox .tabs button { clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); }
+
+/* breathing room */
+.view { padding-top: clamp(26px, 4vw, 56px); padding-left: clamp(22px, 7vw, 110px); padding-bottom: 80px; }
+.col { gap: 34px; width: min(600px, 100%); }
+.plate { padding: 28px 32px 30px; } .plate .sh { margin-bottom: 20px; }
+.plate h2 { margin: 10px 0 6px; } .plate .sub { margin-bottom: 4px; }
+.pl { gap: 26px; } .seg { margin: 18px 0 8px; } .acts { gap: 22px; margin-top: 26px; }
+.pips { margin: 14px 0; } .plate p { line-height: 1.5; }
+.nextlist { gap: 8px; } .nextlist .nx { padding: 14px 16px; }
+.rows { gap: 8px; } .rowi { padding: 16px 18px; gap: 18px; } .upgrade { padding: 16px 18px; }
+.strip div { padding: 18px 20px; }
+.roadwrap { padding: 30px 34px; } .gtabs { margin-bottom: 22px; gap: 10px; } .legend { margin-top: 18px; gap: 26px; } .detail { margin-top: 24px; padding: 22px 26px; }
+.plate h3 { margin-top: 22px; } .chips { gap: 8px; }
+#authbox .card.auth { padding: 34px 36px; } #authbox label { margin-bottom: 18px; }
+header { padding-left: clamp(22px, 5vw, 72px); padding-right: clamp(22px, 5vw, 72px); }
+.site-foot { padding-left: clamp(22px, 7vw, 110px); padding-right: clamp(22px, 7vw, 110px); padding-top: 28px; padding-bottom: 28px; }
+@media (max-width: 900px) { .plate { padding: 20px 20px 22px; } .col { gap: 22px; } .view { padding-left: 16px; padding-right: 16px; } }

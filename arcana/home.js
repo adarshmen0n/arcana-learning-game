@@ -66,7 +66,8 @@ function resetView(token) {
   wirePw(app);
   $("#rf").onsubmit = async (e) => { e.preventDefault(); try { await api("/api/reset", "POST", { token, password: e.target.password.value }); history.replaceState(null, "", "/"); toast("Password changed. You are logged in."); await boot(); } catch (er) { $("#e").innerHTML = `<div class="err">${esc(er.message)}</div>`; } };
 }
-async function logout() { await api("/api/logout", "POST"); S.user = null; $("#who").innerHTML = ""; authView(); }
+function signedOut() { if (typeof stopStage === "function") stopStage(); S.user = null; S.view = null; $("#nav").innerHTML = ""; $("#who").innerHTML = ""; authView(); }
+async function logout() { await api("/api/logout", "POST"); signedOut(); }
 
 function profileDialog() {
   const u = S.user, d = document.createElement("dialog");
@@ -78,13 +79,13 @@ function profileDialog() {
     <p class="muted small" style="margin-top:14px"><a href="/help.html">Help and support</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/privacy.html">Privacy</a></p>`;
   document.body.appendChild(d); d.showModal(); wirePw(d);
   const shut = () => { d.close(); d.remove(); };
-  d.querySelectorAll(".pickc").forEach((b) => (b.onclick = async () => { await api("/api/profile", "POST", { gender: b.dataset.g }); S.user.gender = b.dataset.g; shut(); toast("Ranger updated"); dash(); }));
+  d.querySelectorAll(".pickc").forEach((b) => (b.onclick = async () => { await api("/api/profile", "POST", { gender: b.dataset.g }); S.user.gender = b.dataset.g; shut(); toast("Ranger updated"); if (window.Lobby) Lobby.setGender(S.user.gender); shell(); }));
   $("#close", d).onclick = shut;
   $("#pf", d).onsubmit = async (e) => { e.preventDefault(); const f = e.target; try { await api("/api/password", "POST", { current: f.current ? f.current.value : "", new: f.password.value }); S.user.hasPassword = true; shut(); toast("Password updated"); } catch (er) { $("#pe", d).innerHTML = `<div class="err">${esc(er.message)}</div>`; } };
   $("#exp", d).onclick = async () => { try { const j = await api("/api/export"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(j, null, 2)], { type: "application/json" })); a.download = "arcana-my-data.json"; a.click(); } catch (er) { toast(er.message); } };
-  $("#all", d).onclick = async () => { await api("/api/logout-all", "POST"); shut(); S.user = null; $("#who").innerHTML = ""; authView(); };
+  $("#all", d).onclick = async () => { await api("/api/logout-all", "POST"); shut(); signedOut(); };
   $("#dc", d).oninput = (e) => ($("#del", d).disabled = e.target.value.trim() !== "DELETE");
-  $("#del", d).onclick = async () => { await api("/api/account", "DELETE"); shut(); S.user = null; $("#who").innerHTML = ""; authView(); };
+  $("#del", d).onclick = async () => { await api("/api/account", "DELETE"); shut(); signedOut(); };
 }
 
 // ------------------------------------------------------------------ animated intro (canvas): neon grid road, sun, floating runes, rotating tagline
@@ -135,54 +136,120 @@ async function mountGoogle() {
 
 // ------------------------------------------------------------------ AI coach card
 function coachCard(c) {
-  if (!c || c.answers < 5) return `<section class="card" id="coach"><h2>Your AI coach</h2><p class="muted">Answer about 10 questions and the coach will study your habits: speed, guessing, hints, forgetting and weak spots.</p></section>`;
+  if (!c || c.answers < 5) return `<div class="plate" id="coach">${sh("01", "AI COACH")}<p class="muted">Answer about 10 questions and the coach will study your habits: speed, guessing, hints, forgetting and weak spots.</p></div>`;
   const bd = c.byDifficulty ? Object.entries(c.byDifficulty).map(([d, v]) => `<div class="cbar"><span>${["", "Easy", "Medium", "Hard"][d] || d}</span><div class="bar ${tone(v.accuracy / 100)}"><i style="width:${v.accuracy}%"></i></div><b>${v.accuracy}%</b></div>`).join("") : "";
   const steps = c.ai ? c.ai.advice : c.plan;
-  return `<section class="card" id="coach"><div class="row between"><h2>Your AI coach</h2><span class="badge">${c.ai ? "AI plan" : c.aiPending ? "AI is thinking..." : "analysis"}</span></div>
+  return `<div class="plate" id="coach">${sh("01", "AI COACH")}<div class="row" style="margin-bottom:8px"><span class="styletag">${c.ai ? "AI plan" : c.aiPending ? "AI is thinking..." : "analysis"}</span></div>
     ${c.ai ? `<p><b>${esc(c.ai.headline)}</b></p>` : ""}<h3>Accuracy by difficulty</h3>${bd}
     ${c.findings.length ? "<h3>What I noticed</h3><ul class='ul'>" + c.findings.map((f) => `<li>${esc(f.text)}</li>`).join("") + "</ul>" : ""}
-    <h3>Your next steps</h3><ul class="ul">${steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></section>`;
+    <h3>Your next steps</h3><ul class="ul">${steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>`;
 }
 
 // ------------------------------------------------------------------ dashboard
 async function load() {
-  [S.rm, S.games, S.coach] = await Promise.all([api("/api/roadmap"), api("/api/games"), api("/api/coach").catch(() => null)]);
+  [S.rm, S.games, S.coach, S.hero] = await Promise.all([api("/api/roadmap"), api("/api/games"), api("/api/coach").catch(() => null), api("/api/hero").catch(() => null)]);
+}
+
+// ------------------------------------------------------------------ the hub: top navigation + screens over a living 3D-ish stage
+const VIEWS = [["hub", "HUB"], ["roadmap", "ROADMAP"], ["armory", "ARMORY"], ["library", "LIBRARY"], ["coach", "PROGRESS"]];
+let sfxCtx = null, lastBlip = 0;
+function blip(f = 520, d = 0.04, v = 0.025) { const n = performance.now(); if (n - lastBlip < 60) return; lastBlip = n; try { sfxCtx = sfxCtx || new (window.AudioContext || window.webkitAudioContext)(); const o = sfxCtx.createOscillator(), g = sfxCtx.createGain(); o.type = "square"; o.frequency.value = f; g.gain.value = v; o.connect(g); g.connect(sfxCtx.destination); o.start(); g.gain.exponentialRampToValueAtTime(0.0001, sfxCtx.currentTime + d); o.stop(sfxCtx.currentTime + d); } catch (e) {} }
+document.addEventListener("pointerover", (e) => { const t = e.target.closest && e.target.closest(".gbtn,#nav button,.rowi,.eq,.nx"); if (t && t !== document.__lastBlipEl) { document.__lastBlipEl = t; blip(760, 0.03, 0.015); } });
+document.addEventListener("click", (e) => { if (e.target.closest && e.target.closest(".gbtn,#nav button,.eq")) blip(380, 0.07, 0.03); });
+
+function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = rej; document.head.appendChild(el); }); }
+async function startStage() {
+  document.body.classList.add("hub"); if (!$("#stagebg")) { const d = document.createElement("div"); d.id = "stagebg"; document.body.prepend(d); }
+  const node = S.rm && S.rm.games.map((g) => g.nodes.find((n) => n.status === "current")).find(Boolean), theme = (node && node.theme && node.theme.background) || "neon_grid";
+  try {
+    if (!window.Lobby) { for (const src of ["https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js", "art-env.js", "art-people.js", "lobby.js"]) await loadScript(src); }
+    Lobby.start("stagebg", { theme, gender: S.user.gender });
+  } catch (e) { /* the hub works without the animated stage */ }
+}
+function stopStage() { document.body.classList.remove("hub", "noheroview"); if (window.Lobby) Lobby.stop(); const d = $("#stagebg"); if (d) d.remove(); }
+
+function shell() {
+  const u = S.user, st = S.rm.stats;
+  $("#nav").innerHTML = VIEWS.map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? "on" : ""}">${l}</button>`).join("");
+  $("#nav").querySelectorAll("button").forEach((b) => (b.onclick = () => go(b.dataset.v)));
+  $("#who").innerHTML = `<span class="chipx" title="Knowledge shards">&#9670; ${S.hero ? S.hero.shards : 0}</span><span class="chipx lv">LV ${st.level}</span><button class="gbtn sm" id="prof"><span>${esc(u.username)}</span></button><button class="gbtn sm danger" id="out"><span>Log out</span></button>`;
+  $("#prof").onclick = profileDialog; $("#out").onclick = logout;
+}
+function go(v) {
+  S.view = v; shell(); document.body.classList.toggle("noheroview", v === "roadmap");
+  const view = $("#view"); if (!view) return; const html = VIEW_FN[v](); view.className = "view"; view.innerHTML = html; void view.offsetWidth; AFTER[v] && AFTER[v](); scrollTo(0, 0);
 }
 function dash() {
-  const { stats: st, adaptation: ad, next, achievements, games } = S.rm;
-  $("#who").innerHTML = `<button class="ghost" id="prof">${S.user.gender === "f" ? "&#9792;" : "&#9794;"} ${esc(S.user.username)}</button><button class="ghost" id="out">Log out</button>`;
-  $("#prof").onclick = profileDialog; $("#out").onclick = logout;
-  if (!S.games.length) { onboarding(); return; }
-  const diffDots = [1, 2, 3, 4, 5].map((i) => `<i class="${i <= ad.difficulty ? "on" : ""}"></i>`).join("");
-  app.innerHTML = `
-  <section class="card hero"><div class="lvl">${st.level}<small>LEVEL</small></div><div>
-    <h1>Welcome back, ${esc(S.user.username)}</h1><div class="xp"><i style="width:${Math.round(st.xpInLevel / 5)}%"></i></div><div class="muted small">${st.xpInLevel} / 500 XP to level ${st.level + 1}</div>
-    <div class="next">${next.length ? next.map((n, i) => `<div class="nx"><span><span class="k">${esc(n.kind.toUpperCase())}</span>${esc(n.text)}</span>${n.game ? `<a class="btn ${i === 0 ? "primary" : ""}" href="/play.html?game=${encodeURIComponent(n.game)}">${n.kind === "continue" ? "Continue" : "Go"}</a>` : `<button data-up>Upload</button>`}</div>`).join("") : '<div class="nx"><span>Upload notes to start your personal path</span><button data-up class="primary">Upload</button></div>'}</div></div></section>
-  <div class="grid2">
-    <section class="card"><h2>Your performance</h2><div class="stats">
-      <div class="stat"><b>${st.accuracy == null ? "-" : st.accuracy + "%"}</b><span>Accuracy</span><em>${st.recentAccuracy == null ? "" : "recent: " + st.recentAccuracy + "%"}${st.trend == null ? "" : " (" + (st.trend >= 0 ? "+" : "") + st.trend + ")"}</em></div>
-      <div class="stat"><b>${st.answers}</b><span>Answers</span></div><div class="stat"><b>${st.pace == null ? "-" : st.pace + "s"}</b><span>Pace per answer</span></div>
-      <div class="stat"><b>${st.bestStreak}</b><span>Best streak</span></div><div class="stat"><b>${st.topics}</b><span>Topics tracked</span></div><div class="stat"><b>${st.gamesFinished}</b><span>Games finished</span></div></div>
-      <h3>Weak topics</h3><div class="chips">${st.weak.length ? st.weak.map((t) => `<span class="chip weak">${esc(t.name)} ${pct(t.mastery)}</span>`).join("") : '<span class="muted small">None yet. Weak topics appear after a few mistakes.</span>'}</div>
-      <h3>Strong topics</h3><div class="chips">${st.strong.length ? st.strong.map((t) => `<span class="chip strong">${esc(t.name)} ${pct(t.mastery)}</span>`).join("") : '<span class="muted small">Keep playing to build mastery.</span>'}</div></section>
-    <section class="card"><h2>How ARCANA teaches you</h2><div class="row"><span class="badge ${esc(ad.style)}">${esc(ad.style)}</span><span class="muted small">difficulty ${ad.difficulty} of 5 // ${ad.maxHearts} hearts</span></div><div class="dots">${diffDots}</div>
-      <p>${esc(ad.why)}</p><p class="muted small">This setup is only yours and updates every chapter: hearts, boss size, rival skill, hints, explanations and extra practice on your weak topics.</p></section>
-  </div>
-  ${coachCard(S.coach)}
-  <section class="card"><div class="row between"><h2>Your learning roadmap</h2><span class="muted small">click a stop for details</span></div>${games.map((g, gi) => roadBlock(g, gi)).join("")}
-    <div class="legend"><span><i style="background:var(--neon)"></i>done</span><span><i style="background:var(--gold)"></i>mastered</span><span><i style="background:var(--bad)"></i>needs review</span><span><i style="background:#fff"></i>you are here</span><span><i style="background:#1d5a14"></i>locked</span></div><div id="detail"></div></section>
-  <div class="grid2">
-    <section class="card"><h2>Your games</h2><div class="list">${S.games.map((g) => `<div class="item"><div><b>${esc(g.title)}</b><div class="tag">${""}${g.progress ? (g.progress.finished ? "FINISHED" : "CHAPTER " + (g.progress.chapter + 1)) + " // " + g.progress.score + " PTS" : "NEW"}</div></div><div class="row"><a class="btn" href="/play.html?game=${encodeURIComponent(g.id)}">${g.progress && !g.progress.finished ? "Continue" : "Play"}</a><button class="danger" data-del="${esc(g.id)}">Delete</button></div></div>`).join("")}</div></section>
-    <section class="card" id="upcard"><h2>Make a game from your notes</h2><p class="muted small" id="note"></p>
-      <label class="drop" id="drop"><input type="file" id="file" hidden accept=".pdf,.docx,.pptx,.txt,.md,.html,.htm,.csv,.png,.jpg,.jpeg,.webp"><b id="dropt">Click to choose a file, or drop it here</b><span class="muted small">PDF, DOCX, PPTX, TXT, MD, HTML or an image (max 25 MB)</span></label>
-      <label>...or paste your notes<textarea id="paste" rows="3" placeholder="Paste at least a few paragraphs"></textarea></label><div id="msg"></div><button class="primary" id="go">Create my game</button></section>
-  </div>
-  <section class="card"><h2>Achievements</h2><div class="ach">${achievements.map((a) => `<span class="a ${a.earned ? "on" : ""}">${a.earned ? "&#9733; " : ""}${esc(a.name)}</span>`).join("")}</div></section>`;
-  app.querySelectorAll("[data-up]").forEach((b) => (b.onclick = () => $("#upcard").scrollIntoView({ behavior: "smooth" })));
-  app.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => { if (confirm("Delete this game and your progress in it?")) { await api("/api/games/" + b.dataset.del, "DELETE"); await refresh(); } }));
-  wireRoad(); wireUpload();
-  if (S.user.admin) { const d = document.createElement("div"); d.id = "adminbox"; app.appendChild(d); adminInbox(); }
+  startStage(); app.innerHTML = '<div id="view" class="view"></div>'; S.view = S.view || "hub";
+  go(S.view);
+  if (S.user.admin) { const d = document.createElement("div"); d.id = "adminbox"; d.className = "view"; app.appendChild(d); adminInbox(); }
 }
+const seg = (done, total, cur) => `<div class="seg">${Array.from({ length: Math.max(total, 1) }, (_, i) => `<i class="${i < done ? "on" : i === cur ? "cur" : ""}"></i>`).join("")}</div>`;
+const sh = (n, t) => `<div class="sh"><i>${n}</i>${t}</div>`;
+function uploadBlock(title, first) {
+  return `<div class="plate" id="upcard"><div class="kick">${first ? "FIRST MISSION" : "NEW QUEST"}</div><h2>${title}</h2><p class="muted small" id="note"></p>
+    <label class="drop" id="drop"><input type="file" id="file" hidden accept=".pdf,.docx,.pptx,.txt,.md,.html,.htm,.csv,.png,.jpg,.jpeg,.webp"><b id="dropt">Drop a file here or click to choose</b><span class="muted small">PDF, DOCX, PPTX, TXT, MD, HTML or an image. Up to 25 MB.</span></label>
+    <label>Or paste your notes<textarea id="paste" rows="3" placeholder="Paste at least a few paragraphs"></textarea></label><div id="msg"></div>
+    <div class="acts"><button class="gbtn hero" id="go"><span>Create my game</span></button></div>
+    <p class="muted small" style="margin-top:12px">Your material is read by AI services to write the game, so avoid confidential files. <a href="/privacy.html">Privacy</a></p></div>`;
+}
+
+const VIEW_FN = {
+  hub() {
+    const { stats: st, adaptation: ad, next, games } = S.rm, u = S.user;
+    const ring = `<div class="ringlv"><svg viewBox="0 0 88 88"><circle class="t" cx="44" cy="44" r="38"/><circle class="a" cx="44" cy="44" r="38" stroke-dasharray="239" stroke-dashoffset="${239 * (1 - st.xpInLevel / 500)}"/></svg>${st.level}<small>LEVEL</small></div>`;
+    const player = `<div class="plate"><div class="pl">${ring}<div><div class="kick">RANGER</div><h1>${esc(u.username)}</h1><div class="xpbar"><i style="width:${Math.round(st.xpInLevel / 5)}%"></i></div><div class="muted small" style="margin-top:6px">${st.xpInLevel} / 500 XP &middot; ${st.gamesFinished} games cleared</div></div></div></div>`;
+    if (!games.length) return `<div class="col">${player}${uploadBlock("Turn your notes into a game", true)}</div>`;
+    const g = games.find((x) => x.nodes.some((n) => n.status === "current")) || games[games.length - 1], cur = g.nodes.findIndex((n) => n.status === "current"), node = g.nodes[cur >= 0 ? cur : g.nodes.length - 1];
+    const done = g.nodes.filter((n) => ["done", "mastered", "review"].includes(n.status)).length;
+    const dots = [1, 2, 3, 4, 5].map((i) => `<i class="${i <= ad.difficulty ? "on" : ""}"></i>`).join("");
+    return `<div class="col">${player}
+      <div class="plate"><div class="kick">${g.finished ? "COMPLETED" : "CONTINUE QUEST"}</div><h2>${esc(g.title)}</h2><div class="sub">${g.finished ? "All chapters cleared" : "Next: " + esc(node.title)}</div>${seg(done, g.nodes.length, cur)}
+        <div class="acts"><a class="gbtn hero" href="/play.html?game=${encodeURIComponent(g.id)}"><span>${g.finished ? "Play again" : done ? "Continue" : "Begin"}</span></a><button class="gbtn" data-go="library"><span>New game</span></button></div></div>
+      <div class="plate">${sh("01", "ADAPTIVE SETUP")}<div class="row"><span class="styletag ${esc(ad.style)}">${esc(ad.style)}</span><span class="muted small">difficulty ${ad.difficulty}/5 &middot; ${ad.maxHearts} hearts</span></div><div class="pips">${dots}</div><p style="margin:6px 0 0">${esc(ad.why)}</p></div>
+      <div class="plate">${sh("02", "NEXT UP")}<div class="nextlist">${next.length ? next.slice(0, 4).map((n) => `<div class="nx"><span><span class="k">${esc(n.kind.toUpperCase())}</span>${esc(n.text)}</span>${n.game ? `<a class="gbtn sm" href="/play.html?game=${encodeURIComponent(n.game)}"><span>Go</span></a>` : `<button class="gbtn sm" data-go="library"><span>Upload</span></button>`}</div>`).join("") : '<div class="nx">Nothing queued. Upload new material.</div>'}</div></div>
+      <div class="plate" style="padding:6px 0 0"><div class="strip"><div><b>${st.accuracy == null ? "-" : st.accuracy + "%"}</b><span>Accuracy</span>${st.trend == null ? "" : `<br><em>${st.trend >= 0 ? "+" : ""}${st.trend} recent</em>`}</div><div><b>${st.bestStreak}</b><span>Best streak</span></div><div><b>${st.pace == null ? "-" : st.pace + "s"}</b><span>Pace</span></div><div><b>${st.answers}</b><span>Answers</span></div></div></div></div>`;
+  },
+  roadmap() {
+    const games = S.rm.games; if (!games.length) return `<div class="col">${sh("01", "ROADMAP")}<div class="empty">Your roadmap appears after your first upload.</div></div>`;
+    S.road = Math.min(S.road || 0, games.length - 1);
+    return `<div class="wide roadwrap">${sh("01", "LEARNING ROADMAP")}${games.length > 1 ? `<div class="gtabs">${games.map((g, i) => `<button data-road="${i}" class="${i === S.road ? "on" : ""}">${esc(g.title.slice(0, 28))}</button>`).join("")}</div>` : ""}
+      ${roadBlock(games[S.road], S.road)}<div class="legend"><span><i style="background:var(--neon)"></i>done</span><span><i style="background:var(--gold)"></i>mastered</span><span><i style="background:var(--bad)"></i>needs review</span><span><i style="background:#fff"></i>you are here</span><span><i style="background:#1d5a14"></i>locked</span></div><div id="detail"></div></div>`;
+  },
+  armory() {
+    const h = S.hero; if (!h) return `<div class="col"><div class="empty">Loading your hero...</div></div>`;
+    const abil = h.abilities.map((a) => `<div class="rowi ${a.unlocked ? "" : "locked"}"><div class="cap">${esc(a.key)}</div><div><h3>${esc(a.name)}</h3><p>${esc(a.desc)}</p></div><div class="tagx ${a.unlocked ? "" : "lock"}">${a.unlocked ? (a.cost ? a.cost + " ENERGY" : "READY") : "LV " + a.unlock}</div></div>`).join("");
+    const ench = h.enchants.map((e) => `<div class="rowi eq ${e.equipped ? "on" : ""} ${e.unlocked ? "" : "locked"}" data-ench="${esc(e.id)}"><div class="cap">${e.equipped ? "&#10003;" : "&#9671;"}</div><div><h3>${esc(e.name)}</h3><p>${esc(e.desc)}</p></div><div class="tagx ${e.unlocked ? "" : "lock"}">${e.unlocked ? (e.equipped ? "EQUIPPED" : "EQUIP") : "LV " + e.unlock}</div></div>`).join("");
+    const ups = h.upgrades.map((u) => `<div class="upgrade"><div><h3>${esc(u.name)} <span class="tagx">LV ${u.level}/${u.max}</span></h3><p>${esc(u.desc)}</p><div class="pips">${Array.from({ length: u.max }, (_, i) => `<i class="${i < u.level ? "on" : ""}"></i>`).join("")}</div></div>${u.cost == null ? '<span class="tagx">MAX</span>' : `<button class="gbtn sm" data-up="${esc(u.id)}" ${h.shards < u.cost ? "disabled" : ""}><span>&#9670; ${u.cost}</span></button>`}</div>`).join("");
+    return `<div class="col"><div class="plate"><div class="kick">ARMORY</div><div class="shardbig">${h.shards}<small>KNOWLEDGE SHARDS</small></div><p class="muted small">Defeat enemies in ambushes to collect shards. Every shard teaches you a fact from your own material. Spend them to strengthen your ranger. Powers and enchantments unlock as your level rises.</p></div>
+      <div class="plate">${sh("01", "POWERS")}<div class="rows">${abil}</div></div>
+      <div class="plate">${sh("02", `ENCHANTMENTS (${h.equipped.length}/${h.slots})`)}<div class="rows">${ench}</div></div>
+      <div class="plate">${sh("03", "ENHANCEMENTS")}<div class="rows">${ups}</div></div></div>`;
+  },
+  library() {
+    const rows = S.games.map((g) => `<div class="rowi"><div class="cap">${g.progress && g.progress.finished ? "&#10003;" : "&#9654;"}</div><div><h3>${esc(g.title)}</h3><p>${g.progress ? (g.progress.finished ? "Finished" : "Chapter " + (g.progress.chapter + 1)) + " &middot; " + g.progress.score + " pts" : "New"}</p></div><div class="acts" style="margin:0"><a class="gbtn sm" href="/play.html?game=${encodeURIComponent(g.id)}"><span>${g.progress && !g.progress.finished ? "Continue" : "Play"}</span></a><button class="gbtn sm danger" data-del="${esc(g.id)}"><span>Delete</span></button></div></div>`).join("");
+    return `<div class="col">${uploadBlock("Make a game from your notes", false)}<div class="plate">${sh("01", "YOUR GAMES")}<div class="rows">${rows || '<div class="empty">No games yet.</div>'}</div></div></div>`;
+  },
+  coach() {
+    const st = S.rm.stats, ach = S.rm.achievements;
+    return `<div class="col">${coachCard(S.coach)}<div class="plate">${sh("02", "WEAK AND STRONG TOPICS")}<h3>Needs work</h3><div class="chips">${st.weak.length ? st.weak.map((t) => `<span class="chip weak">${esc(t.name)} ${pct(t.mastery)}</span>`).join("") : '<span class="muted small">None yet.</span>'}</div><h3>Strong</h3><div class="chips">${st.strong.length ? st.strong.map((t) => `<span class="chip strong">${esc(t.name)} ${pct(t.mastery)}</span>`).join("") : '<span class="muted small">Keep playing to build mastery.</span>'}</div></div>
+      <div class="plate">${sh("03", "ACHIEVEMENTS")}<div class="ach">${ach.map((a) => `<span class="a ${a.earned ? "on" : ""}">${a.earned ? "&#9733; " : ""}${esc(a.name)}</span>`).join("")}</div></div></div>`;
+  },
+};
+const AFTER = {
+  hub() { document.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => go(b.dataset.go))); if ($("#upcard")) wireUpload(); },
+  roadmap() { wireRoad(); document.querySelectorAll("[data-road]").forEach((b) => (b.onclick = () => { S.road = +b.dataset.road; go("roadmap"); })); },
+  armory() {
+    document.querySelectorAll("[data-ench]").forEach((b) => (b.onclick = async () => {
+      const e = S.hero.enchants.find((x) => x.id === b.dataset.ench); if (!e.unlocked) return toast("Reach level " + e.unlock + " to unlock " + e.name);
+      let ids = S.hero.enchants.filter((x) => x.equipped).map((x) => x.id); ids = e.equipped ? ids.filter((i) => i !== e.id) : [...ids, e.id].slice(-S.hero.slots);
+      try { S.hero = await api("/api/hero/equip", "POST", { enchants: ids }); go("armory"); } catch (er) { toast(er.message); }
+    }));
+    document.querySelectorAll("[data-up]").forEach((b) => (b.onclick = async () => { try { S.hero = await api("/api/hero/upgrade", "POST", { id: b.dataset.up }); toast("Enhancement upgraded"); go("armory"); } catch (er) { toast(er.message); } }));
+  },
+  library() { if ($("#upcard")) wireUpload(); document.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => { if (confirm("Delete this game and your progress in it?")) { await api("/api/games/" + b.dataset.del, "DELETE"); await refresh(); } })); },
+  coach() {},
+};
 
 // ------------------------------------------------------------------ roadmap (SVG snake path, one per game)
 function roadBlock(g, gi) {
@@ -242,16 +309,6 @@ function wireUpload() {
   };
 }
 
-function onboarding() {
-  app.innerHTML = `<section class="card welcome"><h1>Welcome, ${esc(S.user.username)}</h1><p class="lead">Your adventure starts with your own study material. Upload a file or paste notes and ARCANA turns them into a game made only for you.</p>
-    <div class="steps flat"><div><i>1</i><b>Upload</b><span>a PDF, document, slides, notes or a photo of a page</span></div><div><i>2</i><b>Wait a few minutes</b><span>the AI reads it and builds chapters, bosses and quizzes</span></div><div><i>3</i><b>Play</b><span>the first chapter opens while the rest is still being built</span></div><div><i>4</i><b>Improve</b><span>your roadmap and difficulty adapt to how you do</span></div></div></section>
-    <section class="card" id="upcard"><h2>Make your first game</h2><p class="muted small" id="note"></p>
-      <label class="drop" id="drop"><input type="file" id="file" hidden accept=".pdf,.docx,.pptx,.txt,.md,.html,.htm,.csv,.png,.jpg,.jpeg,.webp"><b id="dropt">Click to choose a file, or drop it here</b><span class="muted small">PDF, DOCX, PPTX, TXT, MD, HTML or an image (max 25 MB)</span></label>
-      <label>...or paste your notes<textarea id="paste" rows="4" placeholder="Paste at least a few paragraphs"></textarea></label><div id="msg"></div><button class="primary" id="go">Create my game</button>
-      <p class="muted small">Tip: text-based files work best. Your material is processed by AI services to write the game, so avoid confidential documents. See the <a href="/privacy.html">Privacy Policy</a>.</p></section>
-    ${S.user.admin ? '<div id="adminbox"></div>' : ""}`;
-  wireUpload(); if (S.user.admin) adminInbox();
-}
 async function adminInbox() {
   const box = $("#adminbox"); if (!box) return;
   try {

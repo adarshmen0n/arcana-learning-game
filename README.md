@@ -2,6 +2,7 @@
 
 Turn any study material into a playable 2D adventure. Students walk, jump and fight through chapters that teach the material, take quizzes as boss fights and arcade levels, and the game learns how each student studies and adapts to them.
 
+- **Combat:** ambush fights are real-time with buttons (strike, kick, guard, dodge, powers). Every enemy carries a knowledge shard: a fact from your own upload. Bosses, missions and trials stay question-based. Powers and enchantments unlock as you level up; shards buy permanent enhancements in the Armory.
 - **Game:** side-scrolling adventure with a man or woman ranger, animated martial-arts and magic fights, a Pac-Man style maze and a Space-Invaders style shooter, five themed worlds, and a revision screen for missed questions.
 - **Upload to game:** PDF, DOCX, PPTX, TXT, MD, HTML or images become chapters, lessons, missions and checked questions. Several AI services work as automatic backups for each other (Gemini, Groq, OpenRouter, Claude, Mistral, DeepSeek, OpenAI, local Ollama), and an offline mode works with no key at all.
 - **Accounts:** sign up with email and password (or Google), strong-password check, terms and privacy pages, password change and reset by email, download-my-data, delete-account, help centre with a support inbox. Every student has a private account and stays logged in. Games, answers and progress belong to that student only. There are no teachers or classes: the game is the teacher.
@@ -42,7 +43,7 @@ Students can always use a username and password. To also show **Continue with Go
 The upload is split into passages and ranked (BM25). Each chapter is written only from the passages that match its topic, then a second AI pass re-answers every question, and finally each question is checked against your text; anything your material does not support is removed.
 
 ## Controls
-`A`/`D` or arrows move, `W`/Space jump, Shift sprint, `E` interact, `1`-`4` choose answers, `M` mute. On phones: on-screen buttons, rotate to landscape.
+`A`/`D` or arrows move, `W`/Space jump, Shift sprint, `E` interact, `1`-`4` choose answers, `M` mute. In a fight: `J` strike, `K` kick, `S` guard, `Shift` dodge, `1`-`4` powers. On phones: on-screen buttons, rotate to landscape.
 
 ## Tests
 ```

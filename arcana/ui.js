@@ -120,7 +120,9 @@ const UI = (() => {
     <div><span class="kc">W</span> / <span class="kc">SPACE</span></div><div>Jump</div>
     <div><span class="kc">SHIFT</span></div><div>Sprint</div>
     <div><span class="kc">E</span></div><div>Interact: talk, challenge, enter</div>
-    <div><span class="kc">1-4</span></div><div>Pick an answer</div>
+    <div><span class="kc">J</span> <span class="kc">K</span></div><div>Fight: strike, kick</div>
+    <div><span class="kc">S</span> <span class="kc">SHIFT</span></div><div>Fight: guard, dodge</div>
+    <div><span class="kc">1</span><span class="kc">2</span><span class="kc">3</span><span class="kc">4</span></div><div>Fight: powers (unlock as you level up). In quizzes: pick an answer</div>
     <div><span class="kc">M</span></div><div>Mute sound</div></div>`;
 
   // ---- HUD ----
@@ -140,7 +142,7 @@ const UI = (() => {
     muted: '<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 9l5 6M22 9l-5 6"/>',
   };
   const icon = (name, cls = "") => `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${IC[name] || ""}</svg>`;
-  const STATION = { npc: "talk", obstacle: "lock", match: "swords", mission: "scroll", maze: "pad", shooter: "pad", level_test: "book", mini_boss: "skull", final_boss: "skull" };
+  const STATION = { npc: "talk", obstacle: "lock", match: "swords", mission: "scroll", maze: "pad", shooter: "pad", level_test: "book", mini_boss: "skull", final_boss: "skull", combat: "swords" };
   let player = { name: "Ranger", gender: "m" };
   function setPlayer(name, gender) { player = { name, gender }; const n = $("#pname"); if (n) n.textContent = name.toUpperCase(); const a = $("#avatar"); if (a) a.style.backgroundImage = ""; }
   let hudBuilt = false, shownScore = 0, scoreTarget = 0, scoreRaf = 0, lastScore = 0, lastHp = null, lastLevel = 1;
@@ -221,7 +223,7 @@ const UI = (() => {
 
   // ---- questions ----
   function ask(q, opts = {}) {
-    const { header = "", explain = false, reveal = true, hint = "", counter = "", cta, dock = false } = opts;
+    const { header = "", explain = false, reveal = true, hint = "", counter = "", cta, dock = false, eliminate = 0 } = opts;
     return new Promise((resolve) => {
       const t0 = Date.now(), order = shuffle(q.options.map((_, i) => i));
       const p = show(`${header}${counter ? `<div class="qcount">${esc(counter)}</div>` : ""}
@@ -229,6 +231,7 @@ const UI = (() => {
         <div class="opts">${order.map((oi, n) => `<button class="opt" style="--i:${n}" data-i="${oi}"><span class="key">${n + 1}</span>${esc(q.options[oi])}</button>`).join("")}</div>
         <div id="fb"></div><div class="row end" id="actions"></div>`, dock ? "dock" : "modal", dock ? "wide compact" : "wide");
       const btns = [...p.querySelectorAll(".opt")]; let done = false;
+      if (eliminate) { const wrong = shuffle(btns.filter((b) => +b.dataset.i !== q.correctIndex)).slice(0, eliminate); wrong.forEach((b) => { b.disabled = true; b.classList.add("struck"); }); }
       const pick = (btn) => {
         if (done) return; done = true;
         const idx = +btn.dataset.i, correct = idx === q.correctIndex; btns.forEach((b) => (b.disabled = true));
@@ -242,7 +245,7 @@ const UI = (() => {
         p.querySelector("#go").onclick = go; p.querySelector("#go").focus(); onKey((e) => isGo(e) && (e.preventDefault(), go()));
       };
       btns.forEach((b) => (b.onclick = () => pick(b)));
-      onKey((e) => { const n = parseInt(e.key, 10); if (n >= 1 && n <= btns.length) pick(btns[n - 1]); });
+      onKey((e) => { const n = parseInt(e.key, 10); if (n >= 1 && n <= btns.length && !btns[n - 1].disabled) pick(btns[n - 1]); });
     });
   }
 

@@ -8,6 +8,7 @@ import time
 
 import config
 import db
+import hero
 import mail
 import llm
 import pipeline
@@ -134,6 +135,35 @@ def google_login(r):
         raise Err(500, "Could not create your account.")
     r.cookie(db.new_session(u["id"]))
     return {"user": public_user(u)}
+
+
+def hero_get(r):
+    return hero.view(r.need())
+
+
+def hero_upgrade(r):
+    u = r.need()
+    limit(("hero", u["id"]), 60, 600)
+    out, err = hero.upgrade(u, clean(r.body.get("id"), 20))
+    if err:
+        raise Err(400, err)
+    return out
+
+
+def hero_equip(r):
+    u = r.need()
+    ids = [clean(x, 20) for x in (r.body.get("enchants") or [])][:5] if isinstance(r.body.get("enchants"), list) else []
+    return hero.equip(u, ids)
+
+
+def hero_earn(r):
+    u = r.need()
+    limit(("earn", u["id"]), 40, 600)
+    try:
+        sh, ki = int(r.body.get("shards") or 0), int(r.body.get("kills") or 0)
+    except (TypeError, ValueError):
+        raise Err(400, "Bad numbers.")
+    return hero.earn(u, sh, ki)
 
 
 def coach_get(r):
@@ -426,7 +456,7 @@ def status(r):
 ROUTES = [
     ("GET", r"/api/status", status), ("GET", r"/api/me", me),
     ("POST", r"/api/register", register), ("POST", r"/api/login", login), ("POST", r"/api/google", google_login), ("POST", r"/api/password", password_change), ("POST", r"/api/forgot", forgot), ("POST", r"/api/reset", reset), ("POST", r"/api/logout-all", logout_all), ("GET", r"/api/export", export),
-    ("POST", r"/api/support", support_create), ("GET", r"/api/support", support_mine), ("GET", r"/api/admin/tickets", admin_tickets), ("POST", r"/api/admin/tickets/([0-9]+)", admin_ticket_set), ("GET", r"/api/coach", coach_get), ("POST", r"/api/logout", logout),
+    ("POST", r"/api/support", support_create), ("GET", r"/api/support", support_mine), ("GET", r"/api/admin/tickets", admin_tickets), ("POST", r"/api/admin/tickets/([0-9]+)", admin_ticket_set), ("GET", r"/api/coach", coach_get), ("GET", r"/api/hero", hero_get), ("POST", r"/api/hero/upgrade", hero_upgrade), ("POST", r"/api/hero/equip", hero_equip), ("POST", r"/api/hero/earn", hero_earn), ("POST", r"/api/logout", logout),
     ("POST", r"/api/profile", profile_set), ("DELETE", r"/api/account", account_delete),
     ("GET", r"/api/games", games_list), ("DELETE", r"/api/games/([a-z0-9]{4,40})", game_delete),
     ("GET", r"/api/scripts/([a-z0-9]+)", script_get),

@@ -28,6 +28,7 @@ ARCANA is a **student-only, single-player** product. Content to game to events t
 | Progressive hints | PARTIAL | One static hint per obstacle |
 | Game specification contract | PARTIAL | `GameScript` v1 works but is not yet a formal JSON Schema in `shared/` |
 | Game events contract | PARTIAL | Answer events carry difficulty, time and hints; chapter progress. No mission start/fail events. |
+| Real-time combat and hero progression | DONE, bot-tested | `arcana/combat.js`, `server/hero.py`: strike/kick/guard/dodge, 4 powers, enemy AI (brute, caster, dasher), knowledge shards from the upload, enchantments, shard-bought enhancements, saved per account. A scripted bot won a fight in a browser; keyboard and phone feel not hand-tested. |
 | Game engine | DONE, bot-tested | Movement, fights, arcade levels, five worlds. Physical keyboard and phones not hand-tested. |
 | AI provider abstraction and fallback | DONE, verified | `server/llm.py`: Claude, Gemini, Groq, OpenRouter and others, cooldowns, failover. Tested with local stand-ins and one live run. |
 | Retry / backoff | PARTIAL | Cooldown and failover exist; no exponential backoff per call |

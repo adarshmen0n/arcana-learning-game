@@ -7,6 +7,7 @@ const FIRST = 1100, SPACING = 940, FONT = '"Orbitron", sans-serif';
 const NEON_HEX = 0x39ff14;
 const V = { left: false, right: false, jump: false, act: false }; // touch / virtual keys
 
+const DEFAULT_HERO = { level: 1, shards: 0, kills: 0, slots: 2, equipped: [], mult: { damage: 1, health: 1, energy: 1, shards: 1, score: 1 }, abilities: [{ id: "strike", name: "Strike", key: "J", unlock: 1, cost: 0, unlocked: true }, { id: "kick", name: "Heavy kick", key: "K", unlock: 1, cost: 0, unlocked: true }], enchants: [], upgrades: [] };
 const G = { missed: [], gameId: null, name: "Ranger", gender: "m", adapt: null, hp: 5, maxHp: 5, score: 0, mistakes: {}, chapterMistakes: 0, finalResult: null, chapterIdx: 0, total: 1 };
 // Every answer and the chapter progress go to this student's private record; the server turns them into mastery.
 const Track = {
@@ -24,6 +25,8 @@ const Track = {
 // The personal setup the server worked out for this student (difficulty, hearts, hints, practice...).
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const A = () => G.adapt || { difficulty: 3, style: "balanced", maxHearts: 5, rivalBonus: 0, bossRatioDelta: 0, bossCountDelta: 0, testPassDelta: 0, targetDifficulty: 2, showHints: true, explainAlways: false, scoreBonus: 1, weak: [], practice: [] };
+async function loadHero() { try { const r = await fetch("/api/hero"); G.hero = r.ok ? await r.json() : DEFAULT_HERO; } catch (e) { G.hero = DEFAULT_HERO; } }
+const enchanted = (id) => !!(G.hero && G.hero.equipped.includes(id));
 async function loadAdapt() {
   try { G.adapt = await UI.api("/api/adapt?game=" + encodeURIComponent(G.gameId)); } catch (e) { /* keep the previous setup */ }
   G.maxHp = A().maxHearts; G.hp = G.maxHp;
@@ -121,6 +124,11 @@ class World extends Phaser.Scene {
     } else if (s.type === "mission") {
       add(this.add.image(0, 0, "altar").setOrigin(0.5, 1).setScale(1.2)); const gem = add(this.add.image(0, -200, "gem")), gl = add(this.add.image(0, -200, "spark").setBlendMode(Phaser.BlendModes.ADD).setTint(NEON_HEX).setScale(2.4));
       e.verb = "Begin mission"; e.top = 300; e.gem = [gem, gl]; e.upd = (dt, t) => { const b = Math.sin(t * 0.003) * 10; gem.y = -200 + b; gl.y = -200 + b; gem.rotation = Math.sin(t * 0.002) * 0.1; gl.alpha = 0.6 + 0.3 * Math.sin(t * 0.007); };
+    } else if (s.type === "combat") {
+      const r1 = add(this.add.ellipse(0, 6, 420, 70, 0xff3b5c, 0.12).setStrokeStyle(3, 0xff3b5c, 0.9)), r2 = add(this.add.ellipse(0, 6, 270, 44, 0xff3b5c, 0.18).setStrokeStyle(2, 0xff8da1, 0.8));
+      const sk = add(this.add.image(0, -60, "spark").setBlendMode(Phaser.BlendModes.ADD).setTint(0xff3b5c).setScale(3.4));
+      add(this.label(root, "AMBUSH", -190, "#ff3b5c")); e.auto = true; e.stopX = x - 380; e.top = 200; e.verb = "Fight";
+      e.upd = (dt, t) => { r1.setAlpha(0.6 + 0.4 * Math.sin(t * 0.006)); r2.scaleX = 1 + 0.08 * Math.sin(t * 0.009); sk.setAlpha(0.25 + 0.2 * Math.sin(t * 0.007)); };
     } else if (s.type === "level_test") {
       const sw = add(this.add.image(0, -150, "swirl").setBlendMode(Phaser.BlendModes.ADD).setScale(0.62)); add(this.add.image(0, 0, "door_frame").setOrigin(0.5, 1).setScale(1.05));
       e.verb = s.practice ? "Practice session" : "Enter trial"; e.top = 380; e.stopX = x - 140; e.sw = sw; e.upd = (dt) => { sw.rotation += dt * 1.2; };
@@ -187,7 +195,8 @@ class World extends Phaser.Scene {
   }
   finish(ent) {
     const t = ent.s.type, X = ent.x;
-    if (t === "obstacle") { Sound.hit(); this.cameras.main.shake(260, 0.01); this.burst(X, GROUND - 160, NEON_HEX, 40); this.shatter(X, GROUND, NEON_HEX); ent.root.destroy(); }
+    if (t === "combat") { this.tweens.add({ targets: ent.root, alpha: 0, duration: 700 }); }
+    else if (t === "obstacle") { Sound.hit(); this.cameras.main.shake(260, 0.01); this.burst(X, GROUND - 160, NEON_HEX, 40); this.shatter(X, GROUND, NEON_HEX); ent.root.destroy(); }
     else if (ent.exploded) { /* already blown apart by the finisher */ }
     else if (ent.boss || t === "match") { this.burst(X, GROUND - 180, ent.boss ? 0xff3b5c : 0xff6b8b, 60); this.tweens.add({ targets: ent.root, alpha: 0, scaleY: 0.2, y: GROUND + 40, duration: 900, ease: "Cubic.in" }); Sound.hit(); }
     else { this.tweens.add({ targets: ent.root, alpha: 0.5, duration: 500 }); const c = this.add.text(X, GROUND - ent.top - 40, "✔", { fontFamily: FONT, fontSize: "30px", color: "#39ff14", stroke: "#000", strokeThickness: 4 }).setOrigin(0.5).setDepth(25); this.tweens.add({ targets: c, y: c.y - 14, yoyo: true, repeat: -1, duration: 900 }); }
@@ -223,6 +232,7 @@ class World extends Phaser.Scene {
       jump = Phaser.Input.Keyboard.JustDown(k.SPACE) | Phaser.Input.Keyboard.JustDown(k.W) | Phaser.Input.Keyboard.JustDown(k.UP) | V.jump;
       act = Phaser.Input.Keyboard.JustDown(k.E) | Phaser.Input.Keyboard.JustDown(k.ENTER) | V.act; V.jump = V.act = false;
     }
+    if (this.combat) Combat.step(this, dt, time);
     if (this.fighting) { this.camX += ((this.fightMid != null ? this.fightMid - 640 : this.camX) - this.camX) * Math.min(1, dt * 5); return; }
     const target = ax * (k.SHIFT.isDown ? 400 : 270);
     this.vx += (target - this.vx) * Math.min(1, dt * (ax ? 10 : 13)); if (Math.abs(this.vx) < 4) this.vx = 0; if (ax) this.face = ax;
@@ -251,7 +261,7 @@ class World extends Phaser.Scene {
 }
 
 // ---- gameplay helpers ----
-const NEXT = { npc: (s) => "Talk to " + s.npc.name, obstacle: () => "Break the seal", match: (s) => "Challenge " + s.opponent.name, mission: () => "Complete the mission", maze: () => "Play Maze Run", shooter: () => "Play Invaders", level_test: (s) => (s.practice ? "Practise your weak topics" : "Pass the trial"), mini_boss: (s) => "Defeat " + s.boss.name, final_boss: (s) => "Defeat " + s.boss.name };
+const NEXT = { npc: (s) => "Talk to " + s.npc.name, obstacle: () => "Break the seal", match: (s) => "Challenge " + s.opponent.name, mission: () => "Complete the mission", maze: () => "Play Maze Run", shooter: () => "Play Invaders", combat: () => "Survive the ambush", level_test: (s) => (s.practice ? "Practise your weak topics" : "Pass the trial"), mini_boss: (s) => "Defeat " + s.boss.name, final_boss: (s) => "Defeat " + s.boss.name };
 function refreshHud() {
   const ch = G.ch || { scenes: [] }, done = G.done || 0, nx = ch.scenes[done];
   UI.hud({ title: ch.title || "", hp: G.hp, maxHp: G.maxHp, score: G.score, done, total: G.total, types: ch.scenes.map((s) => s.type), next: done >= ch.scenes.length ? "Head to the portal" : nx ? NEXT[nx.type](nx) : "", streak: G.streak || 0 });
@@ -260,11 +270,12 @@ function refreshHud() {
 function hurt(scene, conceptId, silent) {
   if (conceptId) G.mistakes[conceptId] = (G.mistakes[conceptId] || 0) + 1;
   G.chapterMistakes++;
+  if (G.shield > 0) { G.shield--; UI.toast("Aegis blocked that mistake"); Sound.click(); refreshHud(); return false; }
   G.hp--; if (!silent) scene.hurtFx();
   if (G.hp <= 0) { G.hp = G.maxHp; G.score = Math.max(0, G.score - 20); UI.toast("Out of hearts: restored (-20 score)"); refreshHud(); return true; }
   refreshHud(); return false;
 }
-const gain = (n) => { G.score += Math.round(n * A().scoreBonus); refreshHud(); };
+const gain = (n) => { G.score += Math.round(n * A().scoreBonus * ((G.hero && G.hero.mult.score) || 1)); refreshHud(); };
 
 async function playObstacle(scene, ent) {
   const s = ent.s;
@@ -294,7 +305,7 @@ async function playMission(scene, ent) {
   m.kind === "order" ? await UI.missionOrder(m, hooks) : await UI.missionPairs(m, hooks); gain(30);
 }
 async function playTest(scene, ent) {
-  const s = ent.s;
+  const s = ent.s; G.shield = enchanted("aegis") ? 1 : 0;
   for (;;) {
     const qs = UI.shuffle(s.questions); let right = 0, pass = s.practice ? 0 : Math.max(1, s.passMark + A().testPassDelta);
     for (let i = 0; i < qs.length; i++) { const r = await UI.ask(qs[i], { explain: s.practice || A().explainAlways, counter: `${s.practice ? "Practice" : "Trial"} // question ${i + 1} of ${qs.length}` }); r.correct ? right++ : hurt(scene, r.conceptId, true); }
@@ -304,13 +315,14 @@ async function playTest(scene, ent) {
   }
 }
 async function fightBoss(scene, ent, questions, passRatio, label) {
+  G.shield = enchanted("aegis") ? 1 : 0;
   const s = ent.s, n = questions.length, need = Math.ceil(n * passRatio);
   await UI.chapterCard({ kicker: label, title: s.boss.name, sub: `Answer ${need} of ${n} correctly to win`, boss: true });
   for (;;) {
     const qs = UI.shuffle(questions); let right = 0, fainted = false; G.hp = G.maxHp; refreshHud(); Fight.begin(scene, ent);
     for (let i = 0; i < n; i++) {
       UI.bossBar(true, { name: s.boss.name, pct: ((n - right) / n) * 100, left: `Question ${i + 1} / ${n}`, right: `Need ${need} correct` });
-      const r = await UI.ask(qs[i], { explain: A().explainAlways, dock: true, counter: `${label} // question ${i + 1} of ${n}` });
+      const r = await UI.ask(qs[i], { explain: A().explainAlways, dock: true, eliminate: enchanted("insight") ? 1 : 0, counter: `${label} // question ${i + 1} of ${n}` });
       if (r.correct) { right++; gain(15); UI.bossBar(true, { name: s.boss.name, pct: ((n - right) / n) * 100, left: `Question ${i + 1} / ${n}`, right: `Need ${need} correct` }); await Fight.heroAttack(scene, ent); }
       else { const out = hurt(scene, r.conceptId, true); await Fight.enemyAttack(scene, ent); if (out) { fainted = true; break; } }
     }
@@ -324,6 +336,17 @@ async function fightBoss(scene, ent, questions, passRatio, label) {
     Fight.end(scene, ent); ent.root.x = ent.homeEnemy;
     await UI.card(`<div class="kicker">Defeat</div><h1>${UI.esc(s.boss.name)} survived</h1><p>${fainted ? "You ran out of hearts." : `${right} of ${n} correct. You needed ${need}.`} Review and try again.</p>`, "Fight again");
   }
+}
+async function playCombat(scene, ent) {
+  const enc = ent.s.enc;
+  await UI.chapterCard({ kicker: enc.title, title: "Hostiles incoming", sub: "J strike  //  K kick  //  S guard  //  Shift dodge  //  1 2 3 powers", boss: true });
+  const res = await Combat.run(scene, ent, enc, G.hero || DEFAULT_HERO, A());
+  Sound.setMood(scene.theme.music); refreshHud();
+  if (!res.won) return;
+  gain(25 + 10 * res.kills);
+  Track.send("/api/hero/earn", { shards: res.shards, kills: res.kills }); setTimeout(loadHero, 800);
+  const facts = res.learned.map((f) => `<li><b>${UI.esc(f.concept)}</b><span>${UI.esc(f.text)}</span></li>`).join("");
+  await UI.card(`<div class="kicker">Area cleared</div><h1>+${res.shards} knowledge shards</h1><p class="muted">What you picked up in this fight:</p><ul class="facts">${facts}</ul>`, "Continue");
 }
 async function playArcade(scene, ent) {
   const s = ent.s, key = s.type, maze = key === "maze";
@@ -345,16 +368,22 @@ async function playScene(scene, ch, ent) {
   else if (s.type === "mission") await playMission(scene, ent);
   else if (s.type === "level_test") await playTest(scene, ent);
   else if (s.type === "maze" || s.type === "shooter") await playArcade(scene, ent);
+  else if (s.type === "combat") await playCombat(scene, ent);
   else if (s.type === "mini_boss") await fightBoss(scene, ent, pickQs(questionsOf(ch), Math.max(4, s.count + A().bossCountDelta)), clamp(0.6 + A().bossRatioDelta, 0.4, 0.85), "Mini-boss");
   else if (s.type === "final_boss") await fightBoss(scene, ent, pickQs([...SCRIPT.chapters.flatMap(questionsOf), ...(SCRIPT.finalBoss.extraQuestions || [])], s.count), clamp(s.passMarkRatio + A().bossRatioDelta, 0.5, 0.9), "Final boss");
 }
 
 async function playChapter(scene, ch, idx, total, at = 0) {
-  await Track.flush(); await loadAdapt();                       // the setup follows the latest performance
+  await Track.flush(); await loadAdapt(); await loadHero();                       // the setup follows the latest performance
   if (ch.id !== "final" && !ch._practiced) {                    // add a practice station for this student's weak topics
     ch._practiced = true;
     const pool = SCRIPT.chapters.flatMap(questionsOf), qs = (A().practice || []).map((id) => pool.find((q) => q.id === id)).filter(Boolean).slice(0, 4);
     if (qs.length >= 2) ch.scenes = [...ch.scenes.slice(0, -1), { type: "level_test", id: ch.id + "-practice", practice: true, questions: qs, passMark: 0 }, ch.scenes[ch.scenes.length - 1]];
+  }
+  if (ch.id !== "final" && !ch._combat) {                       // real-time fights built from this chapter's own material
+    ch._combat = true; const sc = ch.scenes, n1 = sc.findIndex((s) => s.type === "npc");
+    const e1 = { type: "combat", id: ch.id + "-c1", enc: Combat.plan(ch, 0, A()) }, e2 = { type: "combat", id: ch.id + "-c2", enc: Combat.plan(ch, 1, A()) };
+    sc.splice(Math.max(1, n1 + 1), 0, e1); sc.splice(sc.length - 1, 0, e2);
   }
   G.ch = ch; G.done = at; G.total = ch.scenes.length; G.chapterMistakes = 0; G.chapterIdx = idx;
   await UI.wipe(async () => { UI.hideTitle(); scene.build(ch); if (at) { scene.entities.slice(0, at).forEach((e) => e.root.setVisible(false)); scene.hx = scene.entities[at].stopX - 420; scene.camX = scene.hx - 440; scene.orbs.forEach((o) => (o.got = true, o.g.setVisible(false))); } refreshHud(); });

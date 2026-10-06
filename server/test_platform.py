@@ -157,6 +157,19 @@ ok(A.call("GET", "/api/admin/tickets")[0] == 403, "the support inbox is admin on
 ex = A.call("GET", "/api/export")[1]
 ok(ex["account"]["email"] == "alex@example.com" and ex["answers"] and "pw_hash" not in json.dumps(ex), "data export has the student's records and no password hash")
 
+print("hero: powers, enchantments, upgrades")
+hv = A.call("GET", "/api/hero")[1]
+ok(hv["level"] >= 1 and [a["id"] for a in hv["abilities"] if a["unlocked"]][:2] == ["strike", "kick"], "basic moves are unlocked from the start")
+ok(not any(a["unlocked"] for a in hv["abilities"] if a["id"] == "nova"), "later powers stay locked until the level is reached")
+ok(A.call("POST", "/api/hero/upgrade", {"id": "power"})[0] == 400, "upgrades need shards")
+r_ = A.call("POST", "/api/hero/earn", {"shards": 500, "kills": 3})
+ok(r_[1]["shards"] == 60, "shard gains are capped per request")
+ok(A.call("POST", "/api/hero/upgrade", {"id": "power"})[1]["upgrades"][0]["level"] == 1, "shards buy an upgrade")
+ok(A.call("GET", "/api/hero")[1]["mult"]["damage"] > 1, "upgrades raise the hero's stats")
+ok("fortune" not in A.call("POST", "/api/hero/equip", {"enchants": ["fortune", "aegis"]})[1]["equipped"], "equip only accepts unlocked enchantments")
+ok(B.call("GET", "/api/hero")[1]["shards"] == 0, "another student's hero is separate")
+ok(Client().call("GET", "/api/hero")[0] == 401, "the hero needs a login")
+
 print("coach + google")
 co = A.call("GET", "/api/coach")[1]
 ok(co["answers"] >= 20 and co["plan"] and "byDifficulty" in co and "speed" in co, "the coach analyses stored answers (accuracy by difficulty, speed, hints)")

@@ -143,12 +143,18 @@ def profile_set(r):
     return {"ok": True}
 
 
+def _drop_script(gid):
+    sid = re.sub(r"[^a-z0-9]", "", gid.lower())
+    db.delete_script(sid)
+    f = pipeline.SCRIPTS / (sid + ".json")
+    if f.exists():
+        f.unlink()
+
+
 def account_delete(r):
     u = r.need()
     for g in db.q("SELECT id FROM games WHERE owner_id=?", (u["id"],)):
-        f = pipeline.SCRIPTS / (re.sub(r"[^a-z0-9]", "", g["id"].lower()) + ".json")
-        if f.exists():
-            f.unlink()
+        _drop_script(g["id"])
     db.run("DELETE FROM users WHERE id=?", (u["id"],))
     r.cookie("", clear=True)
     return {"ok": True}
@@ -173,9 +179,7 @@ def game_delete(r, gid):
     db.run("DELETE FROM progress WHERE user_id=? AND game_id=?", (u["id"], gid))
     db.run("DELETE FROM mastery WHERE user_id=? AND game_id=?", (u["id"], gid))
     db.run("DELETE FROM events WHERE user_id=? AND game_id=?", (u["id"], gid))
-    f = pipeline.SCRIPTS / (re.sub(r"[^a-z0-9]", "", gid.lower()) + ".json")
-    if f.exists():
-        f.unlink()
+    _drop_script(gid)
     return {"ok": True}
 
 
@@ -258,7 +262,9 @@ def progress_set(r):
         raise Err(403, "That game is not yours.")
     ch, score = max(0, min(50, int(r.body.get("chapterIdx") or 0))), max(0, min(10 ** 7, int(r.body.get("score") or 0)))
     db.run("INSERT INTO progress(user_id,game_id,chapter_idx,score,finished,updated) VALUES(?,?,?,?,?,?) ON CONFLICT(user_id,game_id) DO UPDATE SET "
-           "chapter_idx=MAX(chapter_idx,excluded.chapter_idx), score=MAX(score,excluded.score), finished=MAX(finished,excluded.finished), updated=excluded.updated",
+           "chapter_idx=CASE WHEN excluded.chapter_idx>progress.chapter_idx THEN excluded.chapter_idx ELSE progress.chapter_idx END, "
+           "score=CASE WHEN excluded.score>progress.score THEN excluded.score ELSE progress.score END, "
+           "finished=CASE WHEN excluded.finished>progress.finished THEN excluded.finished ELSE progress.finished END, updated=excluded.updated",
            (u["id"], gid, ch, score, 1 if r.body.get("finished") else 0, int(time.time())))
     return {"ok": True}
 

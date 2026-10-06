@@ -56,7 +56,7 @@ ARCANA is a **student-only, single-player** product. Content to game to events t
 - [ ] AI chooses next experience (setup adapts per student; new content is not generated per student)
 
 ## Recommended order for the next work
-1. **Persistent storage**: Render free plan wipes SQLite on restart. Move to managed Postgres or a paid disk before real users.
+1. ~~Persistent storage~~ done in code: set `DATABASE_URL` to a free Neon/Supabase Postgres. Needs the owner's connection string.
 2. **Prerequisite edges** between concepts (model-proposed, validated acyclic) feeding the roadmap.
 3. **Planner**: generate a short remedial mission for a weak concept instead of replaying old questions.
 4. **Formal contracts** in `shared/schemas/` with validators used by both sides.
@@ -64,4 +64,4 @@ ARCANA is a **student-only, single-player** product. Content to game to events t
 6. Password reset (needs email) and CI with a browser test.
 
 ## Blockers
-- Render's free plan cannot keep the database between restarts.
+- Without `DATABASE_URL`, Render's free plan loses all data on restart.

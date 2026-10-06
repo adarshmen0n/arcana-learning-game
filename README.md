@@ -30,7 +30,7 @@ If a service hits its limit or errors, the next one takes over automatically. Ke
 
 Every upload needs a login. Each student can build `ARCANA_MAX_GAMES_PER_DAY` games a day (default 5) to protect free AI quotas. `ARCANA_HOSTED=1` makes the session cookie Secure (HTTPS only).
 
-**Important on the free plan:** Render's free web service has a temporary disk and sleeps after 15 minutes without visits. Accounts, games, answers and roadmaps are stored in `data/` (SQLite and JSON files) and are lost when the service restarts or redeploys. For real use, add a Render persistent disk mounted at `/opt/render/project/src/data` (paid) or set `ARCANA_DATA` to a mounted volume.
+**Keep data on the free plan:** Render's free web service has a temporary disk and sleeps after 15 minutes without visits. Create a free Postgres database at https://neon.tech (or supabase.com), copy its connection string and set it as `DATABASE_URL` (in `.env`, then `python server/deploy_render.py`, or in the Render Environment tab). Accounts, games, answers, mastery and roadmaps are then stored there and survive restarts. Without `DATABASE_URL` the app uses a local SQLite file, which Render's free plan erases on every restart.
 
 ## Sign in with Google (optional)
 Students can always use a username and password. To also show **Continue with Google**: in Google Cloud Console create an OAuth client of type *Web application*, add your site address (for example your onrender.com URL) under *Authorized JavaScript origins*, and set `GOOGLE_CLIENT_ID` in `.env` or the Render environment. The server verifies each Google token itself and links it to one private account.
@@ -47,6 +47,7 @@ python server/test_ingest.py     # file readers
 python server/test_ai_path.py    # AI layer + provider failover (local stand-ins, no keys, no cost)
 python server/test_platform.py   # accounts, privacy between students, adaptation, roadmap
 python server/test_mastery.py    # mastery and difficulty engine
+python server/pg_test.py         # platform tests on a throwaway Postgres (pip install pgserver)
 ```
 
 ## Project layout

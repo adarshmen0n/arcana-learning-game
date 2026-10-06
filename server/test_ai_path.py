@@ -1,5 +1,8 @@
 """Offline tests for the AI layer. No keys, no cost: local stand-in services pretend to be Claude and OpenAI-compatible APIs.
 Checks: request shapes, verify/drop/assemble logic, and provider failover (rate limit, bad JSON, document too long, all failing)."""
+import tempfile as _t
+os_ = __import__("os")
+os_.environ["ARCANA_DATA"] = _t.mkdtemp()
 import http.server
 import json
 import os

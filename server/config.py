@@ -10,3 +10,7 @@ MAX_GAMES_PER_DAY = int(os.environ.get("ARCANA_MAX_GAMES_PER_DAY", "5"))        
 SECURE_COOKIE = HOSTED                                                              # cookies need https when hosted
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()                    # enables "Continue with Google" (Google Cloud OAuth web client)
+
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()                          # postgres://... (Neon, Supabase). Empty = local SQLite file
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = "postgresql://" + DATABASE_URL[len("postgres://"):]

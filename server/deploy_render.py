@@ -16,7 +16,7 @@ API = "https://api.render.com/v1"
 KEY = os.environ.get("RENDER_API_KEY", "")
 REPO = os.environ.get("ARCANA_REPO", "https://github.com/adarshmen0n/arcana-learning-game")
 NAME = os.environ.get("ARCANA_RENDER_NAME", "arcana-ai")
-SECRETS = ["GEMINI_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "CEREBRAS_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY"]
+SECRETS = ["GEMINI_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "CEREBRAS_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "DATABASE_URL", "GOOGLE_CLIENT_ID"]
 
 
 def call(method, path, body=None):

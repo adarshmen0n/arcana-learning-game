@@ -142,7 +142,7 @@ def _run(job: Job):
         problems = check_script(job.script)
         if problems:
             raise PipelineError("Generated game failed validation: " + "; ".join(problems[:3]))
-        (SCRIPTS / f"{job.id}.json").write_text(json.dumps(job.script, ensure_ascii=False, indent=1), encoding="utf-8")
+        db.save_script(job.id, job.script)
         if job.opts.get("owner"):
             db.add_game(job.id, job.opts["owner"], job.script["title"])
         job.pct, job.status = 100, "done"
@@ -453,16 +453,8 @@ def load_script(sid):
     sid = re.sub(r"[^a-z0-9]", "", sid.lower())
     if sid == "starter":
         return json.loads((pathlib.Path(__file__).parent / "starter_game.json").read_text(encoding="utf-8"))
-    f = SCRIPTS / (sid + ".json")
+    s = db.get_script(sid)
+    if s is not None:
+        return s
+    f = SCRIPTS / (sid + ".json")                      # games saved by earlier versions as files
     return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
-
-
-def list_scripts():
-    out = []
-    for f in sorted(SCRIPTS.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)[:20]:
-        try:
-            d = json.loads(f.read_text(encoding="utf-8"))
-            out.append({"id": f.stem, "title": d.get("title"), "chapters": len(d.get("chapters", [])), "mode": d.get("source", {}).get("mode"), "modified": int(f.stat().st_mtime)})
-        except Exception:
-            pass
-    return out

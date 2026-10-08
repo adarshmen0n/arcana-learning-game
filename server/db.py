@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS progress(user_id INTEGER NOT NULL REFERENCES users(id
 CREATE TABLE IF NOT EXISTS mastery(user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, concept TEXT NOT NULL, m REAL NOT NULL, attempts INTEGER NOT NULL, correct INTEGER NOT NULL, streak INTEGER NOT NULL, last_ts INTEGER NOT NULL, PRIMARY KEY(user_id, game_id, concept));
 """
 PG_SCHEMA = [
-    "CREATE TABLE IF NOT EXISTS users(id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, pw_hash TEXT NOT NULL, gender TEXT NOT NULL DEFAULT 'm', settings TEXT NOT NULL DEFAULT '{}', created BIGINT NOT NULL, email TEXT, google_sub TEXT, last_login BIGINT)",
+    "CREATE TABLE IF NOT EXISTS users(id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL, pw_hash TEXT NOT NULL, gender TEXT NOT NULL DEFAULT 'm', settings TEXT NOT NULL DEFAULT '{}', created BIGINT NOT NULL, email TEXT, google_sub TEXT, last_login BIGINT, on_board INTEGER NOT NULL DEFAULT 1)",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS on_board INTEGER NOT NULL DEFAULT 1",
     "CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires BIGINT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS games(id TEXT PRIMARY KEY, owner_id BIGINT REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, created BIGINT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS scripts(id TEXT PRIMARY KEY, body TEXT NOT NULL, created BIGINT NOT NULL)",
@@ -81,7 +82,7 @@ def _connect():
         c.execute("PRAGMA journal_mode=WAL")
         c.execute("PRAGMA foreign_keys=ON")
         c.executescript(SQLITE_SCHEMA)
-        for col in ("email TEXT", "google_sub TEXT", "last_login INTEGER"):
+        for col in ("email TEXT", "google_sub TEXT", "last_login INTEGER", "on_board INTEGER NOT NULL DEFAULT 1"):
             try:
                 c.execute("ALTER TABLE users ADD COLUMN " + col)
             except sqlite3.OperationalError:
@@ -231,6 +232,22 @@ def use_reset(tok):
 
 def add_ticket(user_id, email, category, subject, message):
     return run("INSERT INTO tickets(user_id,email,category,subject,message,created) VALUES(?,?,?,?,?,?)", (user_id, email, category, subject, message, int(time.time())))
+
+
+XP_SQL = ("SELECT u.id, u.username, COALESCE(p.s, 0) + 2 * COALESCE(e.c, 0) AS xp FROM users u "
+          "LEFT JOIN (SELECT user_id, SUM(score) AS s FROM progress GROUP BY user_id) p ON p.user_id = u.id "
+          "LEFT JOIN (SELECT user_id, COUNT(*) AS c FROM events WHERE correct = 1 GROUP BY user_id) e ON e.user_id = u.id")
+
+
+def leaderboard(user_id, top=10):
+    """Global ranks by XP (the same XP as the student's level). Students who opted out are not listed."""
+    rows = [dict(r) for r in q("SELECT * FROM (" + XP_SQL + " WHERE u.on_board = 1) t WHERE t.xp > 0 ORDER BY t.xp DESC, t.id LIMIT ?", (top,))]
+    me = q("SELECT * FROM (" + XP_SQL + ") t WHERE t.id = ?", (user_id,), one=True)
+    my_xp = int(me["xp"]) if me else 0
+    rank = q("SELECT COUNT(*) AS c FROM (" + XP_SQL + " WHERE u.on_board = 1) t WHERE t.xp > ?", (my_xp,), one=True)["c"] + 1
+    total = q("SELECT COUNT(*) AS c FROM (" + XP_SQL + " WHERE u.on_board = 1) t WHERE t.xp > 0", (), one=True)["c"]
+    return {"top": [{"rank": i + 1, "name": r["username"], "xp": int(r["xp"]), "level": 1 + int(r["xp"]) // 500, "me": r["id"] == user_id} for i, r in enumerate(rows)],
+            "me": {"rank": rank if my_xp > 0 else None, "xp": my_xp, "level": 1 + my_xp // 500}, "players": total}
 
 
 def export_user(user_id):

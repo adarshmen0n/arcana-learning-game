@@ -79,7 +79,7 @@ def public_user(u):
         return None
     email = u["email"] if "email" in u.keys() else None
     return {"username": u["username"], "gender": u["gender"], "email": email, "admin": bool(email and email.lower() in config.ADMIN_EMAILS),
-            "hasPassword": u["pw_hash"].startswith("scrypt$")}
+            "hasPassword": u["pw_hash"].startswith("scrypt$"), "onBoard": bool(u["on_board"]) if "on_board" in u.keys() else True}
 
 
 def check_password_rules(pw, username="", email=""):
@@ -245,6 +245,10 @@ def game_rebuild(r, gid):
     return job_create(r)
 
 
+def leaderboard_get(r):
+    return db.leaderboard(r.need()["id"])
+
+
 def coach_get(r):
     import coach
     return coach.advice(r.need())
@@ -377,6 +381,8 @@ def profile_set(r):
     g = r.body.get("gender")
     if g in ("m", "f"):
         db.run("UPDATE users SET gender=? WHERE id=?", (g, u["id"]))
+    if "onBoard" in r.body:
+        db.run("UPDATE users SET on_board=? WHERE id=?", (1 if r.body.get("onBoard") else 0, u["id"]))
     return {"ok": True}
 
 
@@ -539,7 +545,7 @@ def status(r):
 ROUTES = [
     ("GET", r"/api/status", status), ("GET", r"/api/me", me),
     ("POST", r"/api/register", register), ("POST", r"/api/login", login), ("POST", r"/api/google", google_login), ("POST", r"/api/password", password_change), ("POST", r"/api/forgot", forgot), ("POST", r"/api/reset", reset), ("POST", r"/api/logout-all", logout_all), ("GET", r"/api/export", export),
-    ("POST", r"/api/support", support_create), ("GET", r"/api/support", support_mine), ("GET", r"/api/admin/tickets", admin_tickets), ("POST", r"/api/admin/tickets/([0-9]+)", admin_ticket_set), ("GET", r"/api/coach", coach_get), ("GET", r"/api/arc", arc_get), ("POST", r"/api/arc", arc_post), ("DELETE", r"/api/arc", arc_delete), ("POST", r"/api/games/([a-z0-9]{4,40})/rebuild", game_rebuild), ("POST", r"/api/remedial", remedial_start), ("GET", r"/api/remedial", remedial_status), ("POST", r"/api/report", report_question), ("GET", r"/api/hero", hero_get), ("POST", r"/api/hero/upgrade", hero_upgrade), ("POST", r"/api/hero/equip", hero_equip), ("POST", r"/api/hero/earn", hero_earn), ("POST", r"/api/logout", logout),
+    ("POST", r"/api/support", support_create), ("GET", r"/api/support", support_mine), ("GET", r"/api/admin/tickets", admin_tickets), ("POST", r"/api/admin/tickets/([0-9]+)", admin_ticket_set), ("GET", r"/api/coach", coach_get), ("GET", r"/api/leaderboard", leaderboard_get), ("GET", r"/api/arc", arc_get), ("POST", r"/api/arc", arc_post), ("DELETE", r"/api/arc", arc_delete), ("POST", r"/api/games/([a-z0-9]{4,40})/rebuild", game_rebuild), ("POST", r"/api/remedial", remedial_start), ("GET", r"/api/remedial", remedial_status), ("POST", r"/api/report", report_question), ("GET", r"/api/hero", hero_get), ("POST", r"/api/hero/upgrade", hero_upgrade), ("POST", r"/api/hero/equip", hero_equip), ("POST", r"/api/hero/earn", hero_earn), ("POST", r"/api/logout", logout),
     ("POST", r"/api/profile", profile_set), ("DELETE", r"/api/account", account_delete),
     ("GET", r"/api/games", games_list), ("DELETE", r"/api/games/([a-z0-9]{4,40})", game_delete),
     ("GET", r"/api/scripts/([a-z0-9]+)", script_get),

@@ -97,7 +97,7 @@ const Arc = (() => {
     bubble("user", text); const wait = bubble("assistant", "", '<div class="arc-typing"><i></i><i></i><i></i></div>');
     try {
       const j = await api("/api/arc", "POST", { message: text, gameId: st.gameId || undefined, context: st.ctx() || undefined });
-      wait.innerHTML = md(j.answer) + (j.notesUsed ? '<div class="arc-src">Used your notes</div>' : "");
+      wait.innerHTML = md(j.answer) + (j.notesUsed ? '<div class="arc-src">Used your notes</div>' : j.sources && j.sources.length ? '<div class="arc-src">Checked live sources</div>' : "");
       const u = st.root.querySelector(".arc-use"); if (u) { const m = u.textContent.match(/(\d+) \/ (\d+)/); if (m) usage(+m[1] + 1, +m[2]); }
     } catch (e) { wait.innerHTML = `<p class="arc-err">${esc(e.message)}</p>`; }
     st.busy = false; st.root.querySelector(".arc-msgs").scrollTop = 1e9; ta.focus();
@@ -128,6 +128,6 @@ const Arc = (() => {
     const l = st.root && st.root.querySelector(".arc-lock"); if (l) { l.classList.toggle("hidden", !on); l.querySelector("span").textContent = reason; }
     if (on && st.open) close();
   }
-  return { mount, open, close, toggle, setLocked, addNote, md, get isOpen() { return st.open; } };
+  return { mount, open, close, toggle, setLocked, addNote, md, ask: (t) => send(t), get isOpen() { return st.open; } };
 })();
 window.Arc = Arc;

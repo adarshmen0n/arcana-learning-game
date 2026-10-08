@@ -184,10 +184,16 @@ _chat, _avail = _llm.chat, _llm.available
 SEEN_SYS = []
 _llm.chat = lambda system, messages, **kw: (SEEN_SYS.append(system), "**Answer:** " + messages[-1]["content"])[1]
 _llm.available = lambda: True
+import websearch as _ws
+_look = _ws.lookup
+_ws.lookup = lambda q: [{"title": "Chief Minister of Tamil Nadu", "url": "https://en.wikipedia.org/wiki/Chief_Minister_of_Tamil_Nadu", "content": "C. Joseph Vijay is the incumbent Chief Minister since 10 May 2026."}]
+import arc as _arc
+_arc.websearch.lookup = _ws.lookup
 ok(A.call("POST", "/api/arc", {"message": "?"})[0] == 400, "an empty question is refused")
 s_, d_ = A.call("POST", "/api/arc", {"message": "What is chlorophyll?", "context": {"chapter": "Light"}})
 ok(s_ == 200 and "chlorophyll" in d_["answer"].lower() and "Current chapter: Light" in SEEN_SYS[-1], "Arc Search answers and knows where the student is")
 ok(len(A.call("GET", "/api/arc")[1]["messages"]) == 2, "the conversation is saved")
+ok("<web_results>" in SEEN_SYS[-1] and "Today's date is" in SEEN_SYS[-1] and "10 May 2026" in SEEN_SYS[-1], "general questions get live web results and today's date")
 db.save_source(GID, "Chlorophyll is the green pigment that absorbs light energy in the chloroplast. " * 20)
 s_, d_ = A.call("POST", "/api/arc", {"message": "what does chlorophyll absorb", "gameId": GID})
 ok(d_.get("notesUsed") and "<student_notes>" in SEEN_SYS[-1], "inside a game it uses the student's own notes")
@@ -197,6 +203,16 @@ A.call("DELETE", "/api/arc")
 ok(A.call("GET", "/api/arc")[1]["messages"] == [], "a chat can be cleared")
 ok(Client().call("POST", "/api/arc", {"message": "hello there"})[0] == 401, "Arc Search needs a login")
 _llm.chat, _llm.available = _chat, _avail
+_ws.lookup = _look; _arc.websearch.lookup = _look
+
+print("leaderboard")
+lb = A.call("GET", "/api/leaderboard")[1]
+ok(lb["top"] and lb["top"][0]["xp"] >= lb["top"][-1]["xp"] and lb["me"]["rank"] == 1 and lb["top"][0]["me"], "students are ranked by XP and see their own rank")
+ok(all(set(x) == {"rank", "name", "xp", "level", "me"} for x in lb["top"]), "the leaderboard shows names and XP only, no emails")
+A.call("POST", "/api/profile", {"onBoard": False})
+ok(not any(x["me"] for x in A.call("GET", "/api/leaderboard")[1]["top"]) and A.call("GET", "/api/me")[1]["user"]["onBoard"] is False, "a student can hide from the leaderboard")
+A.call("POST", "/api/profile", {"onBoard": True})
+ok(Client().call("GET", "/api/leaderboard")[0] == 401, "the leaderboard needs a login")
 
 print("coach + google")
 co = A.call("GET", "/api/coach")[1]

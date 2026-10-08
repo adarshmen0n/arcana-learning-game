@@ -49,9 +49,8 @@ const Combat = (() => {
 
   // ------------------------------------------------------------------ HUD
   const $ = (s) => document.querySelector(s);
-  const MOVES_HTML = `<b>TECHNIQUES</b><span><kbd>J</kbd> strike chain (4th hit launches)</span><span><kbd>K</kbd> kick / <kbd>hold K</kbd> guard breaker</span><span><kbd>U</kbd> launcher, then <kbd>J</kbd> in the air</span>
-    <span><kbd>L</kbd> grab and throw</span><span><kbd>S</kbd>+<kbd>J</kbd> sweep</span><span><kbd>Shift</kbd> dodge, then <kbd>J</kbd> dash strike</span><span>air <kbd>K</kbd> dive kick / air <kbd>S</kbd>+<kbd>K</kbd> slam</span>
-    <span>tap <kbd>S</kbd> as a hit lands: parry</span><span><kbd>E</kbd> execute a stunned, weak enemy</span><span><kbd>1</kbd>-<kbd>4</kbd> powers &middot; <kbd>H</kbd> hide</span>`;
+  const MOVES_HTML = `<span><kbd>J</kbd> strike</span><span><kbd>K</kbd> kick <i>(hold: break guard)</i></span><span><kbd>U</kbd> launch</span><span><kbd>L</kbd> throw</span><span><kbd>S</kbd>+<kbd>J</kbd> sweep</span>
+    <span><kbd>S</kbd> guard <i>(tap on hit: parry)</i></span><span><kbd>Shift</kbd> dodge</span><span>air <kbd>K</kbd> dive</span><span><kbd>E</kbd> execute</span><span><kbd>1</kbd>-<kbd>4</kbd> powers</span><span><kbd>H</kbd> hide</span>`;
   function build() {
     if (built) return; built = true;
     const el = document.createElement("div"); el.id = "cb"; el.className = "hidden";
@@ -61,29 +60,36 @@ const Combat = (() => {
       <div class="cb-meter"><i id="cb-mt"></i><span>KNOWLEDGE</span></div>
       <div class="cb-slots" id="cb-slots"></div><div id="fact" class="hidden"></div><div id="cb-moves"></div><div id="cb-call" class="hidden"></div>
       <div id="ctouch"><button data-a="strike">J<small>STRIKE</small></button><button data-a="kick" data-k="1">K<small>KICK/HOLD</small></button><button data-a="launch">U<small>LAUNCH</small></button><button data-a="grab">L<small>THROW</small></button>
-        <button data-a="guard" data-hold="1">S<small>GUARD</small></button><button data-a="dodge">&#8679;<small>DODGE</small></button><button data-a="exec">E<small>EXECUTE</small></button><button data-a="a1">1<small>BOLT</small></button><button data-a="a2">2<small>SHOCK</small></button><button data-a="a3">3<small>SURGE</small></button></div>`;
+        <button data-a="guard" data-hold="1">S<small>GUARD</small></button><button data-a="dodge">&#8679;<small>DODGE</small></button><button data-a="exec">E<small>EXECUTE</small></button><button data-a="a1">1<small>BOLT</small></button><button data-a="a2">2<small>SHOCK</small></button><button data-a="a3">3<small>SURGE</small></button><button data-a="jump">&#9650;<small>JUMP</small></button></div>`;
     $("#frame").appendChild(el);
     $("#cb-moves").innerHTML = MOVES_HTML;
     el.querySelectorAll("#ctouch button").forEach((b) => {
       const a = b.dataset.a, hold = b.dataset.hold, kk = b.dataset.k;
-      b.addEventListener("pointerdown", (e) => { e.preventDefault(); if (hold) T.guardHeld = true; else if (kk) T.kHeld = true; else T[a] = true; b.classList.add("on"); });
+      b.addEventListener("pointerdown", (e) => { e.preventDefault(); if (hold) T.guardHeld = true; else if (kk) T.kHeld = true; else if (a === "jump") V.jump = true; else T[a] = true; b.classList.add("on"); if (navigator.vibrate) try { navigator.vibrate(8); } catch (er) {} });
       const up = () => { if (hold) T.guardHeld = false; if (kk) T.kHeld = false; b.classList.remove("on"); };
       b.addEventListener("pointerup", up); b.addEventListener("pointerleave", up); b.addEventListener("pointercancel", up);
     });
   }
   function buildSlots(L) {
+    HC.slots = null;
+    document.querySelectorAll('#ctouch [data-a^="a"]').forEach((b) => { const ab = L.abilities.find((x) => x.key === b.dataset.a.slice(1)); b.classList.toggle("locked", !(ab && ab.unlocked)); });
     $("#cb-slots").innerHTML = L.abilities.filter((a) => !["strike", "kick"].includes(a.id)).map((a) => `<div class="slot ${a.unlocked ? "" : "locked"}" data-id="${a.id}"><kbd>${a.key}</kbd><span>${a.name.toUpperCase()}</span>${a.unlocked ? (a.cost ? `<em>${a.cost}</em>` : "") : `<em class="lv">LV ${a.unlock}</em>`}<i class="cd"></i></div>`).join("");
   }
-  function hud() {
-    const pct = (v, m) => Math.max(0, Math.min(100, (v / m) * 100));
-    $("#cb-hp").style.width = pct(C.hp, C.maxHp) + "%"; $("#cb-hpt").textContent = Math.ceil(C.hp) + " / " + C.maxHp;
-    $("#cb-en").style.width = C.energy + "%"; $("#cb-mt").style.height = C.meter + "%"; $("#cb-left").textContent = C.enemies.filter((e) => e.state !== "dead").length + C.pending; $("#cb-wave").textContent = C.waves > 1 ? `WAVE ${C.wave + 1}/${C.waves}` : "HOSTILES";
-    $("#cb-mt").parentElement.classList.toggle("full", C.meter >= 100);
-    const cb = $("#cb-combo"); cb.classList.toggle("hidden", C.combo < 2); $("#cb-cn").textContent = "x" + C.combo;
-    document.querySelectorAll("#cb-slots .slot").forEach((s) => {
+  // The DOM HUD is updated about 15 times a second and only when a value changed (writing it every frame made phones stutter).
+  const HC = {}; let hudAt = 0;
+  const put = (el, k, v) => { if (el["_" + k] === v) return; el["_" + k] = v; if (k === "text") el.textContent = v; else if (k[0] === ".") el.classList.toggle(k.slice(1), v); else el.style[k] = v; };
+  function hud(force) {
+    const now = performance.now(); if (!force && now - hudAt < 66) return; hudAt = now;
+    if (!HC.hp) for (const [k, id] of Object.entries({ hp: "cb-hp", hpt: "cb-hpt", en: "cb-en", mt: "cb-mt", left: "cb-left", wave: "cb-wave", combo: "cb-combo", cn: "cb-cn" })) HC[k] = document.getElementById(id);
+    const pct = (v, m) => Math.round(Math.max(0, Math.min(100, (v / m) * 100)));
+    put(HC.hp, "width", pct(C.hp, C.maxHp) + "%"); put(HC.hpt, "text", Math.ceil(C.hp) + " / " + C.maxHp);
+    put(HC.en, "width", Math.round(C.energy) + "%"); put(HC.mt, "height", Math.round(C.meter) + "%"); put(HC.left, "text", String(C.enemies.filter((e) => e.state !== "dead").length + C.pending)); put(HC.wave, "text", C.waves > 1 ? `WAVE ${C.wave + 1}/${C.waves}` : "HOSTILES");
+    put(HC.mt.parentElement, ".full", C.meter >= 100);
+    put(HC.combo, ".hidden", C.combo < 2); put(HC.cn, "text", "x" + C.combo);
+    (HC.slots || (HC.slots = [...document.querySelectorAll("#cb-slots .slot")])).forEach((s) => {
       const a = C.L.abilities.find((x) => x.id === s.dataset.id), cd = Math.max(0, C.cd[a.id] || 0), cdMax = { bolt: 0.9, shock: 3, surge: 9 }[a.id] || 0;
       const lack = a.unlocked && ((a.cost && C.energy < a.cost) || (a.id === "nova" && C.meter < 100));
-      s.classList.toggle("dim", lack); s.classList.toggle("ready", (a.unlocked && !lack && a.cost > 0) || (a.id === "nova" && C.meter >= 100)); s.querySelector(".cd").style.height = cdMax ? pct(cd, cdMax) + "%" : "0";
+      put(s, ".dim", !!lack); put(s, ".ready", !!((a.unlocked && !lack && a.cost > 0) || (a.id === "nova" && C.meter >= 100))); put(s.cdEl || (s.cdEl = s.querySelector(".cd")), "height", cdMax ? pct(cd, cdMax) + "%" : "0");
     });
   }
   function call(text, cls = "") {                     // big technique callout ("LAUNCHER!", "PERFECT PARRY")
@@ -448,11 +454,11 @@ const Combat = (() => {
       C.hp = C.maxHp;
       scene.combat = Combat; scene.fighting = true; scene.fightMid = cx; scene.hero.guard = true; scene.hx = Math.min(scene.hx, cx - 200);
       $("#cb-lv").textContent = "LV " + L.level; $("#cb-name").textContent = (G.name || "RANGER").toUpperCase(); buildSlots(L); $("#cb").classList.remove("hidden");
-      $("#cb-moves").classList.toggle("off", !C.showMoves); UI.hideHud && UI.hideHud(); if (matchMedia("(pointer: coarse)").matches) UI.touch(true);
+      $("#cb-moves").classList.toggle("off", !C.showMoves); UI.hideHud && UI.hideHud(); document.body.classList.add("fighting"); if (matchMedia("(pointer: coarse)").matches) UI.touch(true);
     });
   }
   function stopFight(scene) {
-    $("#cb").classList.add("hidden"); FQ.q = []; $("#fact").classList.add("hidden"); scene.combat = null; scene.fighting = false; scene.fightMid = null; scene.tscale = 1;
+    $("#cb").classList.add("hidden"); document.body.classList.remove("fighting"); FQ.q = []; $("#fact").classList.add("hidden"); scene.combat = null; scene.fighting = false; scene.fightMid = null; scene.tscale = 1;
     scene.hero.guard = false; scene.hero.release(); scene.hero.recover(); scene.hy = GROUND; scene.vy = 0; scene.vx = 0; scene.onGround = true; scene.hero.glowPulse(0);
     for (const e of C.enemies) { e.rig.root.destroy(); e.ui.destroy(); } for (const p of C.proj) p.img.destroy(); for (const o of C.orbs) o.o.destroy();
     G.meter = C.meter; G.fights = (G.fights || 0) + 1;

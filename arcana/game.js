@@ -49,7 +49,7 @@ class World extends Phaser.Scene {
     Art.buildTheme(this, "neon_grid"); People.props(this); People.dress(G.hero && G.hero.look); this.heroes = { m: People.make(this, "hero_m", 1.32), f: People.make(this, "hero_f", 1.32) }; this.hero = this.heroes.m; this.focus = null; Object.values(this.heroes).forEach((h) => h.root.setDepth(12)); this.tscale = 1; this.frozen = false; this.fighting = false; this.fightMid = null;
     this.burstE = this.add.particles(0, 0, "spark", { lifespan: 650, speed: { min: 90, max: 300 }, scale: { start: 0.55, end: 0 }, alpha: { start: 1, end: 0 }, blendMode: "ADD", gravityY: 160, emitting: false, tint: { onEmit: () => this.burstTint } }).setDepth(16);
     Chars.props(this); this.makePrompt();
-    if (this.renderer.type === Phaser.WEBGL) { const fx = this.cameras.main.postFX; fx.addVignette(0.5, 0.5, 0.92, 0.3); fx.addBloom(0xffffff, 1, 1, 1.0, 0.75, 4); }
+    if (this.renderer.type === Phaser.WEBGL && !Art.LOW) { const fx = this.cameras.main.postFX; fx.addVignette(0.5, 0.5, 0.92, 0.3); fx.addBloom(0xffffff, 1, 1, 1.0, 0.75, 4); }   // bloom is the most expensive effect: high quality only
     UI.setScene(this); this.heroVisible(false);
     setTimeout(() => main(this), 0);
   }
@@ -75,7 +75,7 @@ class World extends Phaser.Scene {
     const f2 = add(this.add.tileSprite(0, GROUND - 120, W, 260, "fogbank").setOrigin(0).setScrollFactor(0).setDepth(19).setTint(fog).setAlpha(0.2));
     this.fogs = [{ o: f1, f: 0.7, drift: 6 }, { o: f2, f: 1.15, drift: -9 }]; this.fogT = 0;
     const P = th.particles;
-    add(this.add.particles(0, 0, "spark", { x: { min: 0, max: W }, y: { min: 0, max: H }, lifespan: { min: P.life[0], max: P.life[1] }, speedY: { min: P.vy[0], max: P.vy[1] }, speedX: { min: P.vx[0], max: P.vx[1] }, scale: { start: P.scale[0], end: P.scale[1] }, alpha: { start: P.alpha, end: 0 }, tint: P.tints, blendMode: "ADD", frequency: P.freq, quantity: 1 }).setScrollFactor(0).setDepth(15));
+    add(this.add.particles(0, 0, "spark", { x: { min: 0, max: W }, y: { min: 0, max: H }, lifespan: { min: P.life[0], max: P.life[1] }, speedY: { min: P.vy[0], max: P.vy[1] }, speedX: { min: P.vx[0], max: P.vx[1] }, scale: { start: P.scale[0], end: P.scale[1] }, alpha: { start: P.alpha, end: 0 }, tint: P.tints, blendMode: "ADD", frequency: P.freq * (Art.LOW ? 2.5 : 1), quantity: 1 }).setScrollFactor(0).setDepth(15));
     this.accent = Phaser.Display.Color.HexStringToColor(th.accent).color;
     this.drifts = [];                                         // slowly moving cloud / aurora / mist layers
     for (const d of th.drift || []) {
@@ -214,6 +214,8 @@ class World extends Phaser.Scene {
 
   // ---- main loop ----
   update(time, delta) {
+    this.perfT = (this.perfT || 0) + delta;                    // auto quality: 3 slow seconds in a row switch the bloom off
+    if (this.perfT > 1000) { this.perfT = 0; this.warm = (this.warm || 0) + 1; if (this.warm > 6 && !document.hidden) this.slow = this.game.loop.actualFps < 45 ? (this.slow || 0) + 1 : 0; if (this.slow >= 3 && !Art.LOW) { Art.LOW = true; this.cameras.main.postFX.clear(); } }
     const dt = this.frozen ? 0 : Math.min(delta / 1000, 0.05) * (this.tscale || 1), k = this.k;
     if (this.mode === "title") {
       this.camX += 230 * dt; this.hx = this.camX + 960; this.hy = GROUND; this.vx = 240; this.face = 1; this.onGround = true;
@@ -528,6 +530,6 @@ if (matchMedia("(pointer: coarse)").matches) {
 (async () => {
   try { await Promise.race([Promise.all([document.fonts.load('900 20px Orbitron'), document.fonts.load('700 20px Rajdhani')]), new Promise((r) => setTimeout(r, 2500))]); } catch (e) {}
   try { await Promise.race([loadHero(), new Promise((r) => setTimeout(r, 2500))]); } catch (e) {}   // the ranger's suit and trim
-  const game = new Phaser.Game({ type: Phaser.AUTO, parent: "game", width: W, height: H, backgroundColor: "#000", scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [World, MazeScene, ShooterScene, SnakeScene, HillScene], render: { antialias: true } });
+  const game = new Phaser.Game({ type: Phaser.AUTO, parent: "game", width: W, height: H, backgroundColor: "#000", scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [World, MazeScene, ShooterScene, SnakeScene, HillScene], render: { antialias: !Art.LOW, powerPreference: "high-performance" }, fps: { target: 60, smoothStep: true }, disableContextMenu: true });
   window.__arcana = { game, G, V };
 })();

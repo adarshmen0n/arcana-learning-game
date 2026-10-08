@@ -13,7 +13,7 @@ class ArcadeBase extends Phaser.Scene {
     g.fillStyle(0x000000, 1).fillRect(0, 0, W, H);
     g.fillGradientStyle(0x001a06, 0x001a06, 0x000000, 0x000000, 0.9).fillRect(0, 0, W, H);
     g.lineStyle(1, G, 0.07); for (let x = 0; x < W; x += 40) g.lineBetween(x, 0, x, H); for (let y = 0; y < H; y += 40) g.lineBetween(0, y, W, y);
-    this.add.particles(0, 0, "spark", { x: { min: 0, max: W }, y: { min: 0, max: H }, lifespan: 5000, speedY: { min: -14, max: -4 }, scale: { start: 0.25, end: 0 }, alpha: { start: 0.7, end: 0 }, tint: [G, 0xb6ff5a], blendMode: "ADD", frequency: 140 });
+    this.add.particles(0, 0, "spark", { x: { min: 0, max: W }, y: { min: 0, max: H }, lifespan: 5000, speedY: { min: -14, max: -4 }, scale: { start: 0.25, end: 0 }, alpha: { start: 0.7, end: 0 }, tint: [G, 0xb6ff5a], blendMode: "ADD", frequency: Art.LOW ? 360 : 140 });
   }
   header(kicker, question) {
     const { W, FONT, BODY } = ARC;

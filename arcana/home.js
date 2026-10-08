@@ -275,7 +275,7 @@ function shell() {
 }
 function go(v) {
   if (!VIEW_FN[v]) v = "hub";
-  S.view = v; shell(); document.body.classList.toggle("noheroview", v !== "hub");
+  S.view = v; shell(); document.body.classList.toggle("noheroview", v !== "hub"); if (window.Lobby && Lobby.pause) Lobby.pause(v !== "hub");
   const view = $("#view"); if (!view) return; const html = VIEW_FN[v](); view.className = "view"; view.innerHTML = html; void view.offsetWidth; AFTER[v] && AFTER[v](); scrollTo(0, 0);
 }
 function dash() {

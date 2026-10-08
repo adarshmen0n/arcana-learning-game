@@ -480,5 +480,10 @@ const Art = (() => {
     return (cache[name] = cache[name] || builders[name](scene));
   }
 
-  return { W, H, GROUND, TW, LAYER_BOTTOM, buildTheme, util: { mk, lg, glow, rgba, mix, R, rnd, wrap, setSeed: (s) => (seed = s) } };
+  // LOW quality on phones/tablets and weak machines (or ?gfx=low). The game also drops to LOW by itself if it runs slowly.
+  const LOW = (() => {
+    try { const q = new URLSearchParams(location.search).get("gfx") || localStorage.getItem("arcana_gfx"); if (q === "high") return false; if (q === "low") return true; } catch (e) {}
+    return matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
+  })();
+  return { W, H, GROUND, TW, LAYER_BOTTOM, LOW, buildTheme, util: { mk, lg, glow, rgba, mix, R, rnd, wrap, setSeed: (s) => (seed = s) } };
 })();

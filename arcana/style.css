@@ -364,3 +364,50 @@ p.lesson { font-size: clamp(14px, 1.7cqw, 22px); line-height: 1.45; }
 .gradebig { font-size: clamp(30px, 4.6cqw, 64px); }
 /* phones: combat buttons sit above the move/jump pads, slots go to the top, the keyboard cheat sheet hides */
 @media (pointer: coarse) { #cb-moves { display: none !important; } #ctouch { bottom: calc(min(15cqw, 90px) + 4cqw) !important; right: 2cqw !important; } #cb .cb-slots { bottom: auto; top: 1.4cqw; transform: translateX(-50%) scale(.85); transform-origin: top center; } }
+
+/* ===================== v2.2 fight controls: nothing covers the arena ===================== */
+/* desktop: one thin, see-through key strip on the bottom edge; power slots small just above it */
+#cb-moves { left: 50%; right: auto; top: auto; bottom: .3cqw; transform: translateX(-50%); width: max-content; max-width: 94cqw; display: flex; flex-wrap: wrap; justify-content: center; gap: .1cqw 1.1cqw; padding: .25cqw 1.2cqw; background: linear-gradient(90deg, transparent, rgba(2,10,4,.5) 12%, rgba(2,10,4,.5) 88%, transparent); border: 0; font-size: clamp(9px, .74cqw, 12px); color: rgba(207,232,200,.72); white-space: nowrap; }
+#cb-moves b { display: none; } #cb-moves i { font-style: normal; opacity: .6; } #cb-moves kbd { font-size: clamp(8px, .66cqw, 11px); padding: 0 .25cqw; background: rgba(57,255,20,.08); }
+#cb .cb-slots { bottom: 2.3cqw; gap: .35cqw; opacity: .9; }
+#cb .slot { width: 5.2cqw; padding: .3cqw .25cqw .25cqw; background: rgba(2,10,4,.42); border-color: rgba(57,255,20,.3); }
+#cb .slot kbd { font-size: 1.05cqw; } #cb .slot span { font-size: .52cqw; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } #cb .slot em { font-size: .55cqw; }
+#fact { bottom: 6.6cqw; }
+
+/* phones and tablets: a real mobile-game layout. Move pad bottom-left, action cluster bottom-right, all see-through green */
+@media (pointer: coarse) {
+  #touch { padding: 1.6cqw 2.4cqw; }
+  #touch button { background: rgba(57,255,20,.07); border: 1.5px solid rgba(57,255,20,.42); color: rgba(205,255,195,.85); box-shadow: 0 0 10px rgba(57,255,20,.12); -webkit-tap-highlight-color: transparent; }
+  #touch button:active { background: rgba(57,255,20,.32); color: #fff; }
+  body.fighting #touch > div:last-child { display: none; }                 /* the fight cluster has its own jump */
+  #cb .cb-slots { opacity: .8; }
+  #ctouch { display: block !important; position: absolute; inset: 0 !important; width: auto !important; pointer-events: none; }
+  #ctouch button { position: absolute; pointer-events: auto; width: 6.6cqw; max-width: 64px; aspect-ratio: 1; padding: 0; border-radius: 50%; display: grid; place-content: center; line-height: 1;
+    background: rgba(57,255,20,.08); border: 1.5px solid rgba(57,255,20,.45); color: rgba(210,255,200,.9); font: 900 clamp(12px, 1.8cqw, 20px) var(--head); text-shadow: 0 0 6px rgba(57,255,20,.6);
+    box-shadow: 0 0 10px rgba(57,255,20,.12), inset 0 0 12px rgba(57,255,20,.08); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; transition: background .08s, transform .08s; }
+  #ctouch button small { display: block; margin-top: .2cqw; font: 700 clamp(6px, .72cqw, 9px) var(--head); letter-spacing: .05em; opacity: .75; }
+  #ctouch button.on { background: rgba(57,255,20,.36); color: #fff; transform: scale(.93); }
+  #ctouch [data-a="strike"] { right: 10cqw; bottom: 2.6cqw; width: 12cqw; max-width: 116px; font-size: clamp(16px, 2.6cqw, 28px); border-width: 2px; background: rgba(57,255,20,.12); }
+  #ctouch [data-a="kick"]   { right: 23.4cqw; bottom: 2.2cqw; width: 8cqw; max-width: 78px; }
+  #ctouch [data-a="dodge"]  { right: 23.8cqw; bottom: 11.6cqw; }
+  #ctouch [data-a="guard"]  { right: 17cqw; bottom: 17.4cqw; }
+  #ctouch [data-a="launch"] { right: 10.4cqw; bottom: 16.6cqw; }
+  #ctouch [data-a="jump"]   { right: 1.8cqw; bottom: 13.4cqw; width: 8cqw; max-width: 78px; }
+  #ctouch [data-a="grab"]   { right: 32.6cqw; bottom: 3cqw; width: 6cqw; }
+  #ctouch [data-a="exec"]   { right: 32cqw; bottom: 10.6cqw; width: 6cqw; color: #ffd36a; border-color: rgba(255,211,106,.5); background: rgba(255,211,106,.07); }
+  #ctouch [data-a="a1"]     { right: 2.4cqw; bottom: 23cqw; width: 5.4cqw; color: #5eead4; border-color: rgba(94,234,212,.5); background: rgba(94,234,212,.07); }
+  #ctouch [data-a="a2"]     { right: 2.4cqw; bottom: 29.4cqw; width: 5.4cqw; color: #5eead4; border-color: rgba(94,234,212,.5); background: rgba(94,234,212,.07); }
+  #ctouch [data-a="a3"]     { right: 2.4cqw; bottom: 35.8cqw; width: 5.4cqw; color: #5eead4; border-color: rgba(94,234,212,.5); background: rgba(94,234,212,.07); }
+  #fact { bottom: auto; top: 9cqw; left: 50%; transform: translateX(-50%); max-width: 46cqw; }
+  #fact.pop { animation: none; }
+}
+/* phones: cheaper overlays (no blur filters, fewer glows) */
+@media (pointer: coarse) {
+  .panel, .panel.out, .ghost { animation-name: fade !important; }
+  #title .logo { animation: none; }
+  .btn.primary { animation: none; }
+}
+body.fighting #hint { display: none !important; }
+@media (pointer: coarse) { #cb .cb-slots { display: none; } }   /* phones: powers live on the action cluster */
+#ctouch button.locked { opacity: .28; }
+body.fighting #arc-btn.ingame { display: none; }   /* Arc Search is locked in fights anyway */

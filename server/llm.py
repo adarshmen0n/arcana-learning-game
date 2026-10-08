@@ -203,6 +203,17 @@ class AnthropicProvider(Provider):
         except json.JSONDecodeError:
             raise Skip("malformed JSON")
 
+    def chat(self, system, messages, max_tokens, tally):
+        import anthropic
+        try:
+            r = self.client().messages.create(model=self.model, max_tokens=max_tokens, system=system, messages=messages, output_config={"effort": "low"})
+        except anthropic.APIError as e:
+            self._errors(e)
+        _track(tally, r.usage.input_tokens or 0, r.usage.output_tokens or 0)
+        if r.stop_reason == "refusal":
+            raise Skip("declined the request", cooldown=0)
+        return "".join(b.text for b in r.content if b.type == "text").strip()
+
     def research(self, query, tally):
         import anthropic
         tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}]
@@ -403,6 +414,21 @@ class CompatProvider(Provider):
             msgs = msgs + [{"role": "assistant", "content": text[:6000]}, {"role": "user", "content": "That did not match the schema (" + last + "). Return the complete corrected JSON object only."}]
         raise Skip("could not produce valid JSON: " + last)
 
+    def chat(self, system, messages, max_tokens, tally):
+        body = {"model": self.resolve_model(), "messages": [{"role": "system", "content": system}] + messages, "temperature": 0.5, "max_tokens": min(max_tokens, self.out_cap)}
+        if self.name == "gemini" and not getattr(self, "no_reason", False):
+            body["reasoning_effort"] = "low"
+        r = self._post_any_model(body)
+        u = r.get("usage") or {}
+        _track(tally, u.get("prompt_tokens", 0), u.get("completion_tokens", 0))
+        ch = (r.get("choices") or [{}])[0]
+        text = ((ch.get("message") or {}).get("content") or "").strip()
+        if not text:
+            raise Skip("empty answer", cooldown=0)
+        if ch.get("finish_reason") == "length":
+            text += "\n\n*(answer shortened: ask me to continue)*"
+        return text
+
     def transcribe(self, data, mime, tally):
         if not self.vision or mime == "application/pdf":
             raise Skip("cannot read this file type")
@@ -504,6 +530,12 @@ def _route(op, chars, *, need=None, log=None, wait_total=150):
 def call_json(system: str, user: str, schema: dict, *, doc: str | None = None, max_tokens: int = 16000, effort: str | None = None, tally=None, log=None) -> dict:
     chars = len(system) + len(user) + len(doc or "") + len(json.dumps(schema))
     return _route(lambda p: p.json(system, user, schema, doc, max_tokens, effort, tally), chars, log=log)
+
+
+def chat(system: str, messages: list, *, max_tokens: int = 1800, tally=None, log=None) -> str:
+    """Plain conversational answer (Markdown text). messages: [{"role": "user"|"assistant", "content": str}, ...]"""
+    chars = len(system) + sum(len(m["content"]) for m in messages)
+    return _route(lambda p: p.chat(system, messages, max_tokens, tally), chars, log=log, wait_total=40)
 
 
 def research(query: str, *, tally=None, log=None) -> dict:

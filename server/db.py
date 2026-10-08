@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, user_id INTEGER NOT 
 CREATE TABLE IF NOT EXISTS games(id TEXT PRIMARY KEY, owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, created INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS scripts(id TEXT PRIMARY KEY, body TEXT NOT NULL, created INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS sources(game_id TEXT PRIMARY KEY, body TEXT NOT NULL, created INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS arc_messages(id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL DEFAULT '', role TEXT NOT NULL, content TEXT NOT NULL, created INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS arc_user ON arc_messages(user_id, game_id, id);
 CREATE TABLE IF NOT EXISTS reports(id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, qid TEXT NOT NULL, reason TEXT, created INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, chapter TEXT, kind TEXT, qid TEXT, concept TEXT, correct INTEGER NOT NULL, difficulty INTEGER, ms INTEGER, hints INTEGER, ts INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS ev_user ON events(user_id, id);
@@ -50,6 +52,8 @@ PG_SCHEMA = [
     "CREATE TABLE IF NOT EXISTS games(id TEXT PRIMARY KEY, owner_id BIGINT REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, created BIGINT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS scripts(id TEXT PRIMARY KEY, body TEXT NOT NULL, created BIGINT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS sources(game_id TEXT PRIMARY KEY, body TEXT NOT NULL, created BIGINT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS arc_messages(id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL DEFAULT '', role TEXT NOT NULL, content TEXT NOT NULL, created BIGINT NOT NULL)",
+    "CREATE INDEX IF NOT EXISTS arc_user ON arc_messages(user_id, game_id, id)",
     "CREATE TABLE IF NOT EXISTS reports(id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, qid TEXT NOT NULL, reason TEXT, created BIGINT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS events(id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, chapter TEXT, kind TEXT, qid TEXT, concept TEXT, correct INTEGER NOT NULL, difficulty INTEGER, ms INTEGER, hints INTEGER, ts BIGINT NOT NULL)",
     "CREATE INDEX IF NOT EXISTS ev_user ON events(user_id, id)",
@@ -149,6 +153,10 @@ def delete_script(sid):
 
 def save_source(game_id, text):
     run("INSERT INTO sources(game_id,body,created) VALUES(?,?,?) ON CONFLICT(game_id) DO UPDATE SET body=excluded.body", (game_id, text[:400000], int(time.time())))
+
+
+def has_source(game_id):
+    return q("SELECT 1 FROM sources WHERE game_id=?", (game_id,), one=True) is not None
 
 
 def get_source(game_id):

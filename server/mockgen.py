@@ -110,22 +110,34 @@ def build(text, filename="notes"):
                 qs.append(q)
         rnd.shuffle(qs)
         n = len(qs)
-        need = {"obstacles": 2, "match": 5, "arcade": 3, "test": 5, "spare": 2}
+        need = {"obstacles": 2, "match": 3, "arcade": 3, "test": 4, "spare": 3}
         if n < sum(need.values()):                      # scale down for small documents
             f = n / sum(need.values())
             need = {k_: max(1, int(v * f)) for k_, v in need.items()}
         take = lambda m: [qs.pop() for _ in range(min(m, len(qs)))]
         obstacles = [{"question": q, "hint": "Re-read the mentor's words: look for the key term."} for q in take(need["obstacles"])]
         match, arcade, test, spare = take(need["match"]), take(need["arcade"]), take(need["test"]), take(need["spare"])
-        npcs = []
-        for j in range(2):
-            lines = g[j * 3:j * 3 + 3] or g[:3]
-            npcs.append({"npc_name": plan_chapters[-1]["npc_names"][j], "concept_ids": ids[:2], "lines": [{"text": _short(l), "highlight": [t.capitalize() for t in terms if _has(l, t)][:2]} for l in lines], "teacher_note": "Pause and ask students to restate this in their own words."})
+        npcs, roles, names = [], ["intro", "core", "deep", "recap"], (plan_chapters[-1]["npc_names"] + ["Sage Orin", "Captain Lyra"])[:4]
+        per = max(3, min(6, len(g) // 4 or 3))
+        for j in range(4):
+            lines = g[j * per:(j + 1) * per] or g[:per]
+            if j == 3:
+                lines = [c["summary"] for c in ch_concepts][:5] or lines
+            npcs.append({"npc_name": names[j], "role": roles[j], "concept_ids": ids[:3], "key_idea": _short(lines[0], 150),
+                         "lines": [{"text": _short(l, 300), "highlight": [t.capitalize() for t in terms if _has(l, t)][:2]} for l in lines],
+                         "teacher_note": "Say each key term out loud and explain it in your own words."})
+        half = max(1, len(ch_concepts) // 2)
+        tablets = []
+        for part in (ch_concepts[:half], ch_concepts[half:] or ch_concepts[:1]):
+            pts = [c["summary"] for c in part][:5] or [_short(s) for s in g[:3]]
+            extra = [s for s in g if any(_has(s, c["name"]) for c in part) and s not in pts][:max(0, 3 - len(pts))]
+            tablets.append({"title": "Key points: " + ", ".join(c["name"] for c in part[:2]), "concept_ids": [c["id"] for c in part], "points": (pts + [_short(x) for x in extra])[:5],
+                            "example": _short(g[-1], 280), "mistake": "", "terms": [{"term": c["name"], "meaning": _short(c["summary"], 90)} for c in part[:4]]})
         short = [s for s in g if len(s) < 120]
         if len(short) >= 4:
             mission = {"kind": "order", "instruction": "Put these statements in the order they appear in your notes.", "items": short[:4], "pairs": []}
         else:
             mission = {"kind": "match_pairs", "instruction": "Connect each term to the sentence that explains it.", "items": [], "pairs": [{"term": c["name"], "definition": _short(c["summary"], 70)} for c in ch_concepts[:4]]}
-        gens.append({"npcs": npcs, "obstacles": obstacles, "match": match, "mission": mission, "arcade": arcade, "test": test, "spare": spare})
+        gens.append({"npcs": npcs, "tablets": tablets, "obstacles": obstacles, "match": match, "mission": mission, "arcade": arcade, "test": test, "spare": spare})
     plan = {"title": title, "subject": "", "level": "general", "summary": _short(sents[0], 240), "concepts": concepts, "chapters": plan_chapters, "final_boss_name": "Malachar the Sorcerer"}
     return plan, gens

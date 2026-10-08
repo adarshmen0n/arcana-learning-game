@@ -113,6 +113,15 @@ class World extends Phaser.Scene {
     if (s.type === "npc") {
       const a = People.make(this, s.npc.look, 1.3); a.root.setScale(-1.3, 1.3); add(a.root); e.upd = (dt, t) => a.update(dt, t, {});
       e.verb = "Talk"; e.top = 370; add(this.label(root, s.npc.name.toUpperCase(), -300));
+    } else if (s.type === "tablet") {
+      const g = add(this.add.graphics());
+      g.fillStyle(0x000000, 0.45).fillEllipse(0, 4, 190, 26);
+      g.fillStyle(0x1b2420, 1).fillRoundedRect(-62, -250, 124, 250, { tl: 52, tr: 52, bl: 6, br: 6 }).lineStyle(4, 0x39ff14, 0.9).strokeRoundedRect(-62, -250, 124, 250, { tl: 52, tr: 52, bl: 6, br: 6 });
+      g.fillStyle(0x2a3630, 1).fillRoundedRect(-48, -232, 96, 214, { tl: 40, tr: 40, bl: 4, br: 4 });
+      g.lineStyle(3, 0x5eead4, 0.95); for (let r = 0; r < 6; r++) { const y = -196 + r * 30, w = 56 - (r % 3) * 12; g.lineBetween(-w / 2, y, w / 2, y); }
+      const glow = add(this.add.image(0, -130, "spark").setBlendMode(Phaser.BlendModes.ADD).setTint(0x5eead4).setScale(5.5).setAlpha(0.35));
+      add(this.label(root, (s.tablet.title || "KNOWLEDGE TABLET").toUpperCase().slice(0, 34), -290, "#5eead4"));
+      e.verb = "Read the tablet"; e.top = 300; e.stopX = x - 150; e.upd = (dt, t) => glow.setAlpha(0.28 + 0.16 * Math.sin(t * 0.004));
     } else if (s.type === "obstacle") {
       const field = add(this.add.image(0, -10, "gate_field").setOrigin(0.5, 1).setScale(1.2, 1.1).setBlendMode(Phaser.BlendModes.ADD));
       add(this.add.image(0, 0, "gate_pillars").setOrigin(0.5, 1).setScale(1.2)); e.field = field; e.verb = "Break the seal"; e.top = 410; e.stopX = x - 150;
@@ -261,7 +270,7 @@ class World extends Phaser.Scene {
 }
 
 // ---- gameplay helpers ----
-const NEXT = { npc: (s) => "Talk to " + s.npc.name, obstacle: () => "Break the seal", match: (s) => "Challenge " + s.opponent.name, mission: () => "Complete the mission", maze: () => "Play Maze Run", shooter: () => "Play Invaders", combat: () => "Survive the ambush", level_test: (s) => (s.practice ? "Practise your weak topics" : "Pass the trial"), mini_boss: (s) => "Defeat " + s.boss.name, final_boss: (s) => "Defeat " + s.boss.name };
+const NEXT = { tablet: (s) => "Read: " + s.tablet.title, npc: (s) => (s.role === "recap" ? "Recap with " : "Learn from ") + s.npc.name, obstacle: () => "Break the seal", match: (s) => "Challenge " + s.opponent.name, mission: () => "Complete the mission", maze: () => "Play Maze Run", shooter: () => "Play Invaders", combat: () => "Survive the ambush", level_test: (s) => (s.practice ? "Practise your weak topics" : "Pass the trial"), mini_boss: (s) => "Defeat " + s.boss.name, final_boss: (s) => "Defeat " + s.boss.name };
 function refreshHud() {
   const ch = G.ch || { scenes: [] }, done = G.done || 0, nx = ch.scenes[done];
   UI.hud({ title: ch.title || "", hp: G.hp, maxHp: G.maxHp, score: G.score, done, total: G.total, types: ch.scenes.map((s) => s.type), next: done >= ch.scenes.length ? "Head to the portal" : nx ? NEXT[nx.type](nx) : "", streak: G.streak || 0 });
@@ -339,14 +348,17 @@ async function fightBoss(scene, ent, questions, passRatio, label) {
 }
 async function playCombat(scene, ent) {
   const enc = ent.s.enc;
-  await UI.chapterCard({ kicker: enc.title, title: "Hostiles incoming", sub: "J strike  //  K kick  //  S guard  //  Shift dodge  //  1 2 3 powers", boss: true });
+  await UI.chapterCard({ kicker: enc.title, title: "Hostiles incoming", sub: "J strike  //  K kick (hold to break guards)  //  U launch  //  L throw  //  S guard, tap to parry  //  Shift dodge  //  E execute", boss: true });
   const res = await Combat.run(scene, ent, enc, G.hero || DEFAULT_HERO, A());
+  if (window.Arc) res.learned.forEach((f) => Arc.addNote({ kind: "tablet", title: "Shard: " + f.concept, points: [f.text] }));
   Sound.setMood(scene.theme.music); refreshHud();
   if (!res.won) return;
   gain(25 + 10 * res.kills);
   Track.send("/api/hero/earn", { shards: res.shards, kills: res.kills }); setTimeout(loadHero, 800);
-  const facts = res.learned.map((f) => `<li><b>${UI.esc(f.concept)}</b><span>${UI.esc(f.text)}</span></li>`).join("");
-  await UI.card(`<div class="kicker">Area cleared</div><h1>+${res.shards} knowledge shards</h1><p class="muted">What you picked up in this fight:</p><ul class="facts">${facts}</ul>`, "Continue");
+  const facts = res.learned.slice(0, 4).map((f) => `<li><b>${UI.esc(f.concept)}</b><span>${UI.esc(f.text)}</span></li>`).join("");
+  const bonus = { S: 60, A: 35, B: 15, C: 0 }[res.grade] || 0; if (bonus) gain(bonus);
+  const tech = res.techniques.length ? `<p class="muted">Techniques used: ${res.techniques.map((t) => `<span class="techchip">${UI.esc(t)}</span>`).join(" ")}</p>` : "";
+  await UI.card(`<div class="kicker">Area cleared</div><div class="gradebig g${res.grade}">${res.grade}</div><h1>+${res.shards} knowledge shards</h1>${tech}<p class="muted">Best combo x${res.maxCombo}${bonus ? ` &middot; grade bonus +${bonus}` : ""}. What you learned${res.learned.length > 4 ? " (all of it is saved in Arc Search, My notes)" : ""}:</p><ul class="facts">${facts}</ul>`, "Continue");
 }
 async function playArcade(scene, ent) {
   const s = ent.s, key = s.type, maze = key === "maze";
@@ -360,17 +372,24 @@ async function playArcade(scene, ent) {
   });
   Sound.setMood(scene.theme.music); refreshHud();
 }
+const TEACHING = new Set(["npc", "tablet"]);
 async function playScene(scene, ch, ent) {
   const s = ent.s; Track.ctx = { kind: s.type, chapter: ch.id };
-  if (s.type === "npc") await UI.dialogue(s.npc, s.dialogue, { teacherNote: A().explainAlways ? s.teacherNote : null });
+  const quest = !TEACHING.has(s.type);
+  if (quest && window.Arc) Arc.setLocked(true, s.type === "combat" ? "Arc Search unlocks after the fight." : "Arc Search unlocks after this question or quest.");
+  try { await runScene(scene, ch, ent, s); } finally { if (quest && window.Arc) Arc.setLocked(false); }
+}
+async function runScene(scene, ch, ent, s) {
+  if (s.type === "npc") await UI.dialogue(s.npc, s.dialogue, { teacherNote: s.teacherNote, keyIdea: s.keyIdea, role: s.role });
+  else if (s.type === "tablet") await UI.tablet(s.tablet);
   else if (s.type === "obstacle") await playObstacle(scene, ent);
   else if (s.type === "match") await playMatch(scene, ent);
   else if (s.type === "mission") await playMission(scene, ent);
   else if (s.type === "level_test") await playTest(scene, ent);
   else if (s.type === "maze" || s.type === "shooter") await playArcade(scene, ent);
   else if (s.type === "combat") await playCombat(scene, ent);
-  else if (s.type === "mini_boss") await fightBoss(scene, ent, pickQs(questionsOf(ch), Math.max(4, s.count + A().bossCountDelta)), clamp(0.6 + A().bossRatioDelta, 0.4, 0.85), "Mini-boss");
-  else if (s.type === "final_boss") await fightBoss(scene, ent, pickQs([...SCRIPT.chapters.flatMap(questionsOf), ...(SCRIPT.finalBoss.extraQuestions || [])], s.count), clamp(s.passMarkRatio + A().bossRatioDelta, 0.5, 0.9), "Final boss");
+  else if (s.type === "mini_boss") await fightBoss(scene, ent, pickQs(questionsOf(ch), clamp(Math.min(s.count, 5) + A().bossCountDelta, 3, 7)), clamp(0.6 + A().bossRatioDelta, 0.4, 0.85), "Mini-boss");
+  else if (s.type === "final_boss") await fightBoss(scene, ent, pickQs([...SCRIPT.chapters.flatMap(questionsOf), ...(SCRIPT.finalBoss.extraQuestions || [])], Math.min(s.count, 15)), clamp(s.passMarkRatio + A().bossRatioDelta, 0.5, 0.9), "Final boss");
 }
 
 // Personal review: when a topic keeps going wrong, the server writes a short extra lesson + fresh questions from the stored source.
@@ -396,7 +415,12 @@ async function playChapter(scene, ch, idx, total, at = 0) {
     if (rv && rv.scenes) { ch.scenes.splice(0, 0, rv.scenes[0]); ch.scenes.splice(ch.scenes.length - 1, 0, rv.scenes[1]); UI.toast("Personal review added: " + rv.concept); }
   }
   if (ch.id !== "final" && !ch._combat) {                       // real-time fights built from this chapter's own material
-    ch._combat = true; const sc = ch.scenes, n1 = sc.findIndex((s) => s.type === "npc");
+    ch._combat = true; const sc = ch.scenes, t1 = sc.findIndex((s) => s.type === "tablet"), n1 = t1 >= 0 ? t1 : sc.findIndex((s) => s.type === "npc");
+    for (const s of sc) {                                         // older games: lighter question load so teaching leads
+      if (s.type === "match" && s.questions.length > 3) s.questions = s.questions.slice(0, 3);
+      if (s.type === "level_test" && !s.practice && s.questions.length > 4) { s.questions = s.questions.slice(0, 4); s.passMark = Math.min(s.passMark, 3); }
+    }
+    if (sc.filter((s) => s.type === "obstacle").length > 1) { const i2 = sc.map((s) => s.type).lastIndexOf("obstacle"); sc.splice(i2, 1); }
     const e1 = { type: "combat", id: ch.id + "-c1", enc: Combat.plan(ch, 0, A()) }, e2 = { type: "combat", id: ch.id + "-c2", enc: Combat.plan(ch, 1, A()) };
     sc.splice(Math.max(1, n1 + 1), 0, e1); sc.splice(sc.length - 1, 0, e2);
   }
@@ -464,10 +488,18 @@ async function main(scene) {
   await UI.title(SCRIPT, { name: me.username, resume });
   UI.onAnswer = (ok, q, x) => { Track.add(q, ok, x); if (!ok && q && !G.missed.find((m) => m.id === q.id)) G.missed.push(q); G.streak = ok ? (G.streak || 0) + 1 : 0; if (ok && G.streak >= 3) UI.combo(G.streak); refreshHud(); };
   UI.onReport = (q) => { Track.send("/api/report", { gameId: Track.gameId, qid: q.id, prompt: q.prompt }); UI.toast("Thanks. It is removed from your practice and we will check it."); };
+  UI.onLearn = (n) => window.Arc && Arc.addNote(n);
+  if (window.Arc) Arc.mount({ anchor: document.getElementById("frame"), gameId: jid ? "" : gid, getContext: () => ({ game: SCRIPT.title, chapter: G.ch && G.ch.title, concepts: ((G.ch && G.ch.concepts) || []).map((c) => c.name) }),
+    onOpen: () => { scene.input.keyboard.enabled = false; scene.input.keyboard.disableGlobalCapture(); scene.vx = 0; },
+    onClose: () => { scene.input.keyboard.enabled = true; scene.input.keyboard.enableGlobalCapture(); } });
   UI.hideTitle(); scene.setHero(G.gender); UI.setPlayer(me.username, G.gender); Track.start(gid);
   let total = SCRIPT.chapters.length;
   if (LIVE) { const j = await UI.api("/api/jobs/" + LIVE); total = j.total || total; if (j.status === "done") LIVE = null; }
   const c0 = +qp.get("ch") || (resume ? Math.min(resume.chapter, total) : 0);   // dev shortcuts: ?ch=1&at=7
+  if (window.Arc) for (const ch of SCRIPT.chapters.slice(0, c0)) for (const s of ch.scenes) {   // notes from chapters already played
+    if (s.type === "npc") Arc.addNote({ kind: "lesson", from: s.npc.name, role: s.role, lines: s.dialogue.map((l) => l.text), keyIdea: s.keyIdea });
+    if (s.type === "tablet") Arc.addNote({ kind: "tablet", ...s.tablet });
+  }
   for (let i = c0; i <= total; i++) {
     let ch;
     if (i < total) ch = await ensureChapter(i);

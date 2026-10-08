@@ -8,6 +8,7 @@ import time
 
 import config
 import db
+import arc
 import hero
 import mail
 import student
@@ -196,6 +197,54 @@ def report_question(r):
     return {"ok": True}
 
 
+# ----------------------------------------------------------------------------- Arc Search (AI assistant)
+def arc_get(r):
+    u = r.need()
+    gid = r.q1("game")
+    if gid and not db.can_use_game(u["id"], gid):
+        raise Err(403, "That game is not yours.")
+    return {"messages": arc.history(u["id"], gid), "usedToday": arc.used_today(u["id"]), "dailyLimit": arc.DAILY_LIMIT, "ai": llm.available()}
+
+
+def arc_post(r):
+    u = r.need()
+    limit(("arc", u["id"]), 30, 600)
+    msg = str(r.body.get("message") or "").strip()[:2000]
+    gid = clean(r.body.get("gameId"), 40)
+    if len(msg) < 2:
+        raise Err(400, "Type a question first.")
+    if gid and not db.can_use_game(u["id"], gid):
+        raise Err(403, "That game is not yours.")
+    if arc.used_today(u["id"]) >= arc.DAILY_LIMIT:
+        raise Err(429, f"You have used today's {arc.DAILY_LIMIT} Arc Search questions. They refresh tomorrow.")
+    if not llm.available():
+        raise Err(503, "Arc Search needs an AI key on the server.")
+    ctx = r.body.get("context") if isinstance(r.body.get("context"), dict) else None
+    try:
+        return arc.ask(u, msg, gid or None, ctx)
+    except llm.LLMError as e:
+        raise Err(503, "Arc Search is busy right now (" + str(e)[:120] + "). Try again in a minute.")
+
+
+def arc_delete(r):
+    u = r.need()
+    arc.clear(u["id"], r.q1("game"))
+    return {"ok": True}
+
+
+def game_rebuild(r, gid):
+    """Build a fresh version of an existing game from its stored source, using the current (teaching-rich) generator."""
+    u = r.need()
+    if not db.q("SELECT 1 FROM games WHERE id=? AND owner_id=?", (gid, u["id"]), one=True):
+        raise Err(404, "Game not found.")
+    src = db.get_source(gid)
+    if not src:
+        raise Err(400, "This game was made before ARCANA kept the original text. Upload the file again to rebuild it.")
+    title = (db.q("SELECT title FROM games WHERE id=?", (gid,), one=True) or {"title": "notes"})["title"]
+    r.body = {"text": src, "filename": title[:100] + ".txt"}
+    return job_create(r)
+
+
 def coach_get(r):
     import coach
     return coach.advice(r.need())
@@ -354,7 +403,7 @@ def games_list(r):
     out = []
     for g in db.q("SELECT * FROM games WHERE owner_id=? ORDER BY created DESC", (u["id"],)):
         p = db.q("SELECT * FROM progress WHERE user_id=? AND game_id=?", (u["id"], g["id"]), one=True)
-        out.append({"id": g["id"], "title": g["title"], "created": g["created"],
+        out.append({"id": g["id"], "title": g["title"], "created": g["created"], "hasSource": db.has_source(g["id"]),
                     "progress": {"chapter": p["chapter_idx"], "score": p["score"], "finished": bool(p["finished"])} if p else None})
     return out
 
@@ -490,7 +539,7 @@ def status(r):
 ROUTES = [
     ("GET", r"/api/status", status), ("GET", r"/api/me", me),
     ("POST", r"/api/register", register), ("POST", r"/api/login", login), ("POST", r"/api/google", google_login), ("POST", r"/api/password", password_change), ("POST", r"/api/forgot", forgot), ("POST", r"/api/reset", reset), ("POST", r"/api/logout-all", logout_all), ("GET", r"/api/export", export),
-    ("POST", r"/api/support", support_create), ("GET", r"/api/support", support_mine), ("GET", r"/api/admin/tickets", admin_tickets), ("POST", r"/api/admin/tickets/([0-9]+)", admin_ticket_set), ("GET", r"/api/coach", coach_get), ("POST", r"/api/remedial", remedial_start), ("GET", r"/api/remedial", remedial_status), ("POST", r"/api/report", report_question), ("GET", r"/api/hero", hero_get), ("POST", r"/api/hero/upgrade", hero_upgrade), ("POST", r"/api/hero/equip", hero_equip), ("POST", r"/api/hero/earn", hero_earn), ("POST", r"/api/logout", logout),
+    ("POST", r"/api/support", support_create), ("GET", r"/api/support", support_mine), ("GET", r"/api/admin/tickets", admin_tickets), ("POST", r"/api/admin/tickets/([0-9]+)", admin_ticket_set), ("GET", r"/api/coach", coach_get), ("GET", r"/api/arc", arc_get), ("POST", r"/api/arc", arc_post), ("DELETE", r"/api/arc", arc_delete), ("POST", r"/api/games/([a-z0-9]{4,40})/rebuild", game_rebuild), ("POST", r"/api/remedial", remedial_start), ("GET", r"/api/remedial", remedial_status), ("POST", r"/api/report", report_question), ("GET", r"/api/hero", hero_get), ("POST", r"/api/hero/upgrade", hero_upgrade), ("POST", r"/api/hero/equip", hero_equip), ("POST", r"/api/hero/earn", hero_earn), ("POST", r"/api/logout", logout),
     ("POST", r"/api/profile", profile_set), ("DELETE", r"/api/account", account_delete),
     ("GET", r"/api/games", games_list), ("DELETE", r"/api/games/([a-z0-9]{4,40})", game_delete),
     ("GET", r"/api/scripts/([a-z0-9]+)", script_get),

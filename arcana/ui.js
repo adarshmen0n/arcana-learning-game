@@ -3,7 +3,7 @@ const UI = (() => {
   const $ = (s) => document.querySelector(s);
   const ov = $("#overlay"), frame = $("#frame");
   let keyFn = null, hideTimer = null, sceneRef = null;
-  window.addEventListener("keydown", (e) => keyFn && keyFn(e));
+  window.addEventListener("keydown", (e) => { if (e.target && e.target.closest && e.target.closest("input,textarea,[contenteditable],#arc")) return; keyFn && keyFn(e); });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -116,13 +116,17 @@ const UI = (() => {
   }
   const hideTitle = () => { const t = $("#title"); t.classList.add("hidden"); t.innerHTML = ""; };
   const controlsHTML = () => `<div class="keys-grid">
-    <div><span class="kc">A</span><span class="kc">D</span> / <span class="kc">←</span><span class="kc">→</span></div><div>Move</div>
+    <div><span class="kc">A</span><span class="kc">D</span> / <span class="kc">&larr;</span><span class="kc">&rarr;</span></div><div>Move</div>
     <div><span class="kc">W</span> / <span class="kc">SPACE</span></div><div>Jump</div>
-    <div><span class="kc">SHIFT</span></div><div>Sprint</div>
-    <div><span class="kc">E</span></div><div>Interact: talk, challenge, enter</div>
-    <div><span class="kc">J</span> <span class="kc">K</span></div><div>Fight: strike, kick</div>
-    <div><span class="kc">S</span> <span class="kc">SHIFT</span></div><div>Fight: guard, dodge</div>
-    <div><span class="kc">1</span><span class="kc">2</span><span class="kc">3</span><span class="kc">4</span></div><div>Fight: powers (unlock as you level up). In quizzes: pick an answer</div>
+    <div><span class="kc">SHIFT</span></div><div>Sprint (dodge in a fight)</div>
+    <div><span class="kc">E</span></div><div>Talk, read a tablet, enter. In a fight: execute a stunned enemy</div>
+    <div><span class="kc">J</span></div><div>Strike chain (4th hit launches)</div>
+    <div><span class="kc">K</span> / hold <span class="kc">K</span></div><div>Kick / charged guard breaker</div>
+    <div><span class="kc">U</span> &middot; <span class="kc">L</span></div><div>Launcher &middot; grab and throw</div>
+    <div><span class="kc">S</span>+<span class="kc">J</span> &middot; tap <span class="kc">S</span></div><div>Sweep &middot; perfect parry as a hit lands</div>
+    <div>air <span class="kc">J</span> / <span class="kc">K</span> / <span class="kc">S</span>+<span class="kc">K</span></div><div>Air combo / dive kick / ground slam</div>
+    <div><span class="kc">1</span>-<span class="kc">4</span></div><div>Powers in a fight; answers in a quiz</div>
+    <div><span class="kc">Q</span></div><div>Open Arc Search (locked during quests)</div>
     <div><span class="kc">M</span></div><div>Mute sound</div></div>`;
 
   // ---- HUD ----
@@ -142,7 +146,7 @@ const UI = (() => {
     muted: '<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 9l5 6M22 9l-5 6"/>',
   };
   const icon = (name, cls = "") => `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${IC[name] || ""}</svg>`;
-  const STATION = { npc: "talk", obstacle: "lock", match: "swords", mission: "scroll", maze: "pad", shooter: "pad", level_test: "book", mini_boss: "skull", final_boss: "skull", combat: "swords" };
+  const STATION = { npc: "talk", obstacle: "lock", match: "swords", mission: "scroll", maze: "pad", shooter: "pad", level_test: "book", mini_boss: "skull", final_boss: "skull", combat: "swords", tablet: "book" };
   let player = { name: "Ranger", gender: "m" };
   function setPlayer(name, gender) { player = { name, gender }; const n = $("#pname"); if (n) n.textContent = name.toUpperCase(); const a = $("#avatar"); if (a) a.style.backgroundImage = ""; }
   let hudBuilt = false, shownScore = 0, scoreTarget = 0, scoreRaf = 0, lastScore = 0, lastHp = null, lastLevel = 1;
@@ -205,19 +209,40 @@ const UI = (() => {
   function portraitURL(id) {
     try { const src = sceneRef.textures.get(`${id}_head`).getSourceImage(); const cv = document.createElement("canvas"); cv.width = cv.height = 128; const x = cv.getContext("2d"); const s = Math.min(112 / src.width, 112 / src.height); x.drawImage(src, (128 - src.width * s) / 2, (128 - src.height * s) / 2, src.width * s, src.height * s); return cv.toDataURL(); } catch (e) { return ""; }
   }
-  function dialogue(npc, lines, { teacherNote } = {}) {
+  const ROLE = { intro: "INTRODUCTION", core: "CORE LESSON", deep: "DEEP DIVE", recap: "RECAP", review: "PERSONAL REVIEW" };
+  function dialogue(npc, lines, { teacherNote, keyIdea, role } = {}) {
     return new Promise((resolve) => {
       let i = 0, timer = null, full = "", pos = 0;
       const p = show(`
-        <div class="who"><div class="portrait"><img src="${portraitURL(npc.look)}" alt=""></div><div><div class="name">${esc(npc.name)}</div><div class="hintkey">BRIEFING</div></div></div>
-        <p id="txt" style="min-height:3.2em"></p><div id="note"></div>
-        <div class="row end"><span class="hintkey">SPACE / CLICK</span><button class="btn primary" id="go">Next</button></div>`, "dock", "compact");
-      const txt = p.querySelector("#txt"), go = p.querySelector("#go"), note = p.querySelector("#note");
+        <div class="who"><div class="portrait"><img src="${portraitURL(npc.look)}" alt=""></div><div><div class="name">${esc(npc.name)}</div><div class="hintkey">${ROLE[role] || "LESSON"}</div></div>
+          <div class="lprog">${lines.map((_, n) => `<i data-n="${n}"></i>`).join("")}</div></div>
+        <p id="txt" class="lesson" style="min-height:3.6em"></p><div id="note"></div>
+        <div class="row between"><button class="btn" id="back">&larr; Back</button><span class="hintkey">SPACE NEXT &middot; &larr; BACK</span><button class="btn primary" id="go">Next</button></div>`, "dock", "compact lessonbox");
+      const txt = p.querySelector("#txt"), go = p.querySelector("#go"), back = p.querySelector("#back"), note = p.querySelector("#note"), dots = [...p.querySelectorAll(".lprog i")];
       const typing = () => pos < full.length;
-      const finish = () => { clearInterval(timer); pos = full.length; txt.innerHTML = mark(lines[i].text, lines[i].highlight); go.textContent = i === lines.length - 1 ? "Got it" : "Next"; if (i === lines.length - 1 && teacherNote) note.innerHTML = `<div class="study-tip"><b>Study tip:</b> ${esc(teacherNote)}</div>`; };
-      const start = () => { full = lines[i].text; pos = 0; txt.textContent = ""; note.innerHTML = ""; go.textContent = "Skip"; clearInterval(timer); timer = setInterval(() => { pos += 2; txt.innerHTML = esc(full.slice(0, pos)) + '<span class="caret"></span>'; if (pos % 6 === 0) Sound.tick(); if (pos >= full.length) finish(); }, 20); };
-      const advance = () => { if (typing()) return finish(); if (i < lines.length - 1) { i++; start(); } else { clearInterval(timer); hide(); resolve(); } };
-      go.onclick = advance; onKey((e) => isGo(e) && (e.preventDefault(), advance())); start();
+      const paint = () => { dots.forEach((d, n) => { d.classList.toggle("on", n < i); d.classList.toggle("cur", n === i); }); back.disabled = i === 0; };
+      const finish = () => {
+        clearInterval(timer); pos = full.length; txt.innerHTML = mark(lines[i].text, lines[i].highlight); go.textContent = i === lines.length - 1 ? "Got it" : "Next";
+        if (i === lines.length - 1) note.innerHTML = (keyIdea ? `<div class="keyidea"><b>KEY IDEA</b>${esc(keyIdea)}</div>` : "") + (teacherNote ? `<div class="study-tip"><b>Study tip:</b> ${esc(teacherNote)}</div>` : "");
+      };
+      const start = () => { full = lines[i].text; pos = 0; txt.textContent = ""; note.innerHTML = ""; go.textContent = "Skip"; paint(); clearInterval(timer); timer = setInterval(() => { pos += 2; txt.innerHTML = esc(full.slice(0, pos)) + '<span class="caret"></span>'; if (!typing()) finish(); }, 16); };
+      const advance = () => { if (typing()) return finish(); if (i < lines.length - 1) { i++; start(); } else { clearInterval(timer); hide(); if (self.onLearn) self.onLearn({ kind: "lesson", from: npc.name, role, lines: lines.map((l) => l.text), keyIdea }); resolve(); } };
+      const prev = () => { if (i > 0) { i--; start(); finish(); } };
+      go.onclick = advance; back.onclick = prev;
+      onKey((e) => { if (isGo(e)) { e.preventDefault(); advance(); } else if (e.key === "ArrowLeft" || e.key === "Backspace") { e.preventDefault(); prev(); } }); start();
+    });
+  }
+  function tablet(t) {
+    return new Promise((resolve) => {
+      const terms = (t.terms || []).map(([k, v]) => k);
+      const p = show(`<div class="kicker">Knowledge tablet</div><h1 class="tab-title">${esc(t.title)}</h1>
+        <ol class="tpoints">${t.points.map((x, n) => `<li style="--i:${n}">${mark(x, terms)}</li>`).join("")}</ol>
+        ${t.example ? `<div class="tbox ex"><b>EXAMPLE</b>${esc(t.example)}</div>` : ""}
+        ${t.mistake ? `<div class="tbox warn"><b>COMMON MISTAKE</b>${esc(t.mistake)}</div>` : ""}
+        ${(t.terms || []).length ? `<div class="tterms">${t.terms.map(([k, v]) => `<span><b>${esc(k)}</b>${esc(v)}</span>`).join("")}</div>` : ""}
+        <div class="row end"><button class="btn primary" id="go">I have read it</button></div>`, "modal", "wide tabletbox");
+      const go = () => { hide(); if (self.onLearn) self.onLearn({ kind: "tablet", title: t.title, points: t.points, example: t.example, mistake: t.mistake, terms: t.terms }); resolve(); };
+      p.querySelector("#go").onclick = go; onKey((e) => isGo(e) && (e.preventDefault(), go()));
     });
   }
 
@@ -279,6 +304,6 @@ const UI = (() => {
   }
   const bars = (rows) => `<div class="bars">${rows.map((r) => `<div class="bar"><span>${esc(r.label)}</span><div class="track"><div class="fill ${r.cls}" style="width:${r.pct}%"></div></div><span>${esc(r.val)}</span></div>`).join("")}</div>`;
 
-  const self = { onAnswer: null, onReport: null, combo, icon, setPlayer, api, $, sleep, esc, shuffle, show, hide, card, choice, title, hideTitle, hud, hideHud, hint, bossBar, toast, flash, touch, wipe, cine, chapterCard, dialogue, ask, missionOrder, missionPairs, bars, controlsHTML, setScene: (s) => (sceneRef = s) };
+  const self = { onAnswer: null, onReport: null, onLearn: null, tablet, combo, icon, setPlayer, api, $, sleep, esc, shuffle, show, hide, card, choice, title, hideTitle, hud, hideHud, hint, bossBar, toast, flash, touch, wipe, cine, chapterCard, dialogue, ask, missionOrder, missionPairs, bars, controlsHTML, setScene: (s) => (sceneRef = s) };
   return self;
 })();

@@ -170,6 +170,34 @@ ok("fortune" not in A.call("POST", "/api/hero/equip", {"enchants": ["fortune", "
 ok(B.call("GET", "/api/hero")[1]["shards"] == 0, "another student's hero is separate")
 ok(Client().call("GET", "/api/hero")[0] == 401, "the hero needs a login")
 
+print("rebuild + arc search")
+db.add_game("bellagame00001", db.q("SELECT id FROM users WHERE username='bella'", one=True)["id"], "Bella notes")
+db.save_script("bellagame00001", SAMPLE)
+ok(B.call("POST", "/api/games/bellagame00001/rebuild", {})[0] == 400, "rebuild explains when the original text was not kept")
+db.save_source("bellagame00001", "Chlorophyll is the green pigment in leaves. " * 30)
+s_, d_ = B.call("POST", "/api/games/bellagame00001/rebuild", {})
+ok(s_ == 200 and d_.get("id"), "a game with stored text can be rebuilt with the new teaching")
+ok(A.call("POST", "/api/games/bellagame00001/rebuild", {})[0] == 404, "nobody else can rebuild it")
+ok(any(g["hasSource"] for g in B.call("GET", "/api/games")[1]), "the games list says which games can be rebuilt")
+import llm as _llm
+_chat, _avail = _llm.chat, _llm.available
+SEEN_SYS = []
+_llm.chat = lambda system, messages, **kw: (SEEN_SYS.append(system), "**Answer:** " + messages[-1]["content"])[1]
+_llm.available = lambda: True
+ok(A.call("POST", "/api/arc", {"message": "?"})[0] == 400, "an empty question is refused")
+s_, d_ = A.call("POST", "/api/arc", {"message": "What is chlorophyll?", "context": {"chapter": "Light"}})
+ok(s_ == 200 and "chlorophyll" in d_["answer"].lower() and "Current chapter: Light" in SEEN_SYS[-1], "Arc Search answers and knows where the student is")
+ok(len(A.call("GET", "/api/arc")[1]["messages"]) == 2, "the conversation is saved")
+db.save_source(GID, "Chlorophyll is the green pigment that absorbs light energy in the chloroplast. " * 20)
+s_, d_ = A.call("POST", "/api/arc", {"message": "what does chlorophyll absorb", "gameId": GID})
+ok(d_.get("notesUsed") and "<student_notes>" in SEEN_SYS[-1], "inside a game it uses the student's own notes")
+ok(B.call("GET", "/api/arc?game=" + GID)[0] == 403 and B.call("POST", "/api/arc", {"message": "hi there", "gameId": GID})[0] == 403, "nobody can read or use another student's game chat")
+ok(B.call("GET", "/api/arc")[1]["messages"] == [], "each student has a private chat")
+A.call("DELETE", "/api/arc")
+ok(A.call("GET", "/api/arc")[1]["messages"] == [], "a chat can be cleared")
+ok(Client().call("POST", "/api/arc", {"message": "hello there"})[0] == 401, "Arc Search needs a login")
+_llm.chat, _llm.available = _chat, _avail
+
 print("coach + google")
 co = A.call("GET", "/api/coach")[1]
 ok(co["answers"] >= 20 and co["plan"] and "byDifficulty" in co and "speed" in co, "the coach analyses stored answers (accuracy by difficulty, speed, hints)")

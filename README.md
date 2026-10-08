@@ -1,7 +1,9 @@
-# Arcana AI
+# Arcana AI (v2.0)
 
 Turn any study material into a playable 2D adventure. Students walk, jump and fight through chapters that teach the material, take quizzes as boss fights and arcade levels, and the game learns how each student studies and adapts to them.
 
+- **Teaching first:** every chapter has four mentors (introduction, core lesson, deep dive, recap) who speak 5 to 7 lines each and end with a key idea, plus two Knowledge Tablets (key points, a worked example, a common mistake, key terms). At least 60% of every chapter is teaching; questions are written only about what the lessons taught.
+- **Arc Search:** an AI assistant (like ChatGPT) built into the game and the hub. Ask anything; inside a game it also uses your own uploaded notes, and it keeps your notes from every lesson and tablet. It is locked while a question, quest or fight is on screen.
 - **Combat:** ambush fights are real-time with buttons (strike, kick, guard, dodge, powers). Every enemy carries a knowledge shard: a fact from your own upload. Bosses, missions and trials stay question-based. Powers and enchantments unlock as you level up; shards buy permanent enhancements in the Armory.
 - **Game:** side-scrolling adventure with a man or woman ranger, animated martial-arts and magic fights, a Pac-Man style maze and a Space-Invaders style shooter, five themed worlds, and a revision screen for missed questions.
 - **Upload to game:** PDF, DOCX, PPTX, TXT, MD, HTML or images become chapters, lessons, missions and checked questions. Several AI services work as automatic backups for each other (Gemini, Groq, OpenRouter, Claude, Mistral, DeepSeek, OpenAI, local Ollama), and an offline mode works with no key at all.
@@ -43,7 +45,7 @@ Students can always use a username and password. To also show **Continue with Go
 The upload is split into passages and ranked (BM25). Each chapter is written only from the passages that match its topic, then a second AI pass re-answers every question, and finally each question is checked against your text; anything your material does not support is removed.
 
 ## Controls
-`A`/`D` or arrows move, `W`/Space jump, Shift sprint, `E` interact, `1`-`4` choose answers, `M` mute. In a fight: `J` strike, `K` kick, `S` guard, `Shift` dodge, `1`-`4` powers. On phones: on-screen buttons, rotate to landscape.
+`A`/`D` or arrows move, `W`/Space jump, Shift sprint, `E` interact, `1`-`4` choose answers, `M` mute. In a fight: `J` 4-hit strike chain, `K` kick (hold to break guards), `U` launcher then `J` in the air, `L` grab and throw, `S`+`J` sweep, `Shift` dodge then `J` dash strike, air `K` dive kick, air `S`+`K` ground slam, tap `S` as a hit lands to parry (reflects bolts), `E` execute a stunned weak enemy, `1`-`4` powers, `H` hide the move list. `Q` opens Arc Search. On phones: on-screen buttons, rotate to landscape.
 
 ## Tests
 ```

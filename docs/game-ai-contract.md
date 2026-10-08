@@ -5,14 +5,15 @@ The only thing that crosses from the AI side to the game engine. Produced by `se
 ```jsonc
 {
   "schemaVersion": 1,
-  "projectId": "…", "title": "…", "summary": "…",
+  "schemaVersion": 2, "projectId": "…", "title": "…", "summary": "…",
   "audience": { "level": "school" },
   "chapters": [{
     "id": "ch1", "title": "…", "goal": "…",
     "theme": { "background": "ancient_forest | crystal_cave | ember_citadel | desert_canyon | aurora_peaks" },
     "concepts": [{ "id": "c1", "name": "…", "sources": [{ "title": "…", "url": "…" }] }],
     "scenes": [
-      { "type": "npc",        "npc": { "name": "…", "look": "lumen|thyla|ranger|sage" }, "dialogue": [{ "text": "…", "highlight": ["…"] }], "teacherNote": "…" },
+      { "type": "npc",        "role": "intro|core|deep|recap", "npc": { "name": "…", "look": "lumen|thyla|ranger|sage" }, "dialogue": [{ "text": "…", "highlight": ["…"] }], "keyIdea": "…", "teacherNote": "…" },
+      { "type": "tablet",     "tablet": { "title": "…", "points": ["…"], "example": "…", "mistake": "…", "terms": [["term", "meaning"]] } },
       { "type": "obstacle",   "question": Question, "hint": "…" },
       { "type": "match",      "opponent": { "name": "…", "skill": 0.6 }, "questions": [Question] },
       { "type": "mission",    "mission": { "kind": "order", "instruction": "…", "items": ["…"] } },
@@ -36,3 +37,11 @@ Rules the engine relies on: question ids are unique; `correctIndex` is in range;
 
 ## Not yet in the contract (planned, see project-status.md)
 Selected answer, mission started/failed events, and a game specification generated per student by a planner (today the same chapters are played with per-student settings and a practice station).
+
+## Chapter order (schemaVersion 2)
+mentor (intro) > tablet > [ambush, added by the game] > mentor (core) > seal or arcade > tablet > mentor (deep dive) > rival match > mentor (recap) > mission > trial > [ambush] > mini-boss.
+At least 60% of the stations teach. Questions are generated from the lesson text so they only test what was taught.
+
+## Arc Search API
+`GET /api/arc?game=<id>` history (and today's usage) · `POST /api/arc { message, gameId?, context? }` returns `{ answer (Markdown), notesUsed }` · `DELETE /api/arc?game=<id>` clears the chat.
+`POST /api/games/<id>/rebuild` builds a new version of an existing game from its stored source with the current generator.

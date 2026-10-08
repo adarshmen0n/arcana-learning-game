@@ -1,0 +1,44 @@
+/* Arc Search: assistant drawer (game) and full screen (hub). Black + neon, angular, readable. */
+#arc { --a: #39ff14; --a2: #5eead4; font-family: "Rajdhani", system-ui, sans-serif; color: #e8ffe0; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(3,10,6,.97), rgba(1,5,3,.98)); }
+#arc.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 94vw); z-index: 60; border-left: 2px solid var(--a); box-shadow: -20px 0 50px rgba(0,0,0,.6); transform: translateX(105%); transition: transform .32s cubic-bezier(.2,.8,.2,1); }
+#arc.drawer.open { transform: none; }
+#arc.inline { position: relative; height: min(76vh, 760px); border-top: 2px solid var(--a); backdrop-filter: blur(6px); }
+.arc-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px 12px; border-bottom: 1px solid rgba(57,255,20,.2); }
+.arc-head div { font: 900 18px "Orbitron", sans-serif; letter-spacing: .14em; } .arc-head div b { color: var(--a); text-shadow: 0 0 12px rgba(57,255,20,.7); }
+.arc-head span { display: block; font: 600 13px "Rajdhani", sans-serif; letter-spacing: .2em; color: #7fa87a; text-transform: uppercase; margin-top: 2px; }
+.arc-x { background: none; border: 0; color: #9bc795; font-size: 28px; cursor: pointer; line-height: 1; padding: 0 6px; } .arc-x:hover { color: #fff; }
+.arc-tabs { display: flex; gap: 4px; padding: 10px 18px 0; } .arc-tabs button { flex: 1; background: rgba(57,255,20,.05); border: 0; color: #9bc795; font: 700 12px "Orbitron", sans-serif; letter-spacing: .2em; padding: 10px; cursor: pointer; text-transform: uppercase; clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
+.arc-tabs button.on { background: var(--a); color: #021; }
+.arc-body { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 12px 18px 14px; } .arc-body.hidden { display: none; }
+.arc-msgs { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 4px 4px 10px 0; scroll-behavior: smooth; }
+.arc-m { max-width: 92%; padding: 10px 14px; font-size: 17px; line-height: 1.45; animation: arcin .25s ease-out; } @keyframes arcin { from { opacity: 0; transform: translateY(8px); } }
+.arc-m.user { align-self: flex-end; background: rgba(57,255,20,.12); border: 1px solid rgba(57,255,20,.35); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%); }
+.arc-m.assistant { align-self: flex-start; background: rgba(255,255,255,.035); border-left: 3px solid var(--a2); }
+.arc-m p { margin: 0 0 8px; } .arc-m p:last-child { margin-bottom: 0; } .arc-m ul, .arc-m ol { margin: 4px 0 8px; padding-left: 22px; } .arc-m li { margin: 3px 0; }
+.arc-m h3, .arc-m h4 { font: 700 14px "Orbitron", sans-serif; letter-spacing: .08em; color: var(--a2); margin: 10px 0 6px; text-transform: none; }
+.arc-m code { background: rgba(94,234,212,.12); padding: 1px 5px; font-family: Consolas, monospace; font-size: .92em; } .arc-m pre { background: #010402; border: 1px solid rgba(57,255,20,.2); padding: 10px; overflow-x: auto; } .arc-m pre code { background: none; padding: 0; }
+.arc-m b { color: #fff; } .arc-m a { color: var(--a2); } .arc-m blockquote { margin: 6px 0; padding-left: 10px; border-left: 2px solid #7fa87a; color: #b9d8b3; }
+.arc-src { margin-top: 8px; font: 700 10px "Orbitron", sans-serif; letter-spacing: .2em; color: var(--a2); } .arc-err { color: #ff8da1; }
+.arc-typing { display: flex; gap: 5px; padding: 6px 0; } .arc-typing i { width: 8px; height: 8px; background: var(--a2); border-radius: 50%; animation: dot 1s infinite; } .arc-typing i:nth-child(2) { animation-delay: .15s; } .arc-typing i:nth-child(3) { animation-delay: .3s; } @keyframes dot { 50% { opacity: .2; transform: translateY(-4px); } }
+.arc-sugg { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; } .arc-sugg button { background: none; border: 1px solid rgba(94,234,212,.4); color: #bfeee8; font: 600 13px "Rajdhani", sans-serif; padding: 5px 10px; cursor: pointer; transition: all .15s; } .arc-sugg button:hover { background: rgba(94,234,212,.12); color: #fff; }
+.arc-form { display: flex; gap: 8px; align-items: stretch; } .arc-form textarea { flex: 1; resize: none; background: #010603; color: #e8ffe0; border: 1.5px solid #145a0c; padding: 10px 12px; font: 500 16px "Rajdhani", sans-serif; outline: none; } .arc-form textarea:focus { border-color: var(--a); box-shadow: 0 0 14px rgba(57,255,20,.25); }
+.arc-send { width: 52px; background: var(--a); color: #021; border: 0; font-size: 20px; cursor: pointer; clip-path: polygon(10px 0, 100% 0, 100% 100%, 0 100%, 0 10px); } .arc-send:hover { filter: brightness(1.15); }
+.arc-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 13px; color: #7fa87a; } .arc-clear { background: none; border: 0; color: #7fa87a; cursor: pointer; text-decoration: underline; font: inherit; } .arc-clear:hover { color: #ff8da1; }
+.arc-find { background: #010603; border: 1.5px solid #145a0c; color: #e8ffe0; padding: 9px 12px; font: 500 16px "Rajdhani", sans-serif; outline: none; margin-bottom: 10px; }
+.arc-notes { flex: 1; overflow-y: auto; display: grid; gap: 10px; align-content: start; } .arc-note { padding: 10px 12px; background: rgba(255,255,255,.03); border-left: 3px solid var(--a); font-size: 15px; }
+.arc-note b { display: block; font: 700 12px "Orbitron", sans-serif; letter-spacing: .08em; color: var(--a); margin-bottom: 4px; } .arc-note .k { color: #fff; } .arc-note ul { margin: 4px 0; padding-left: 18px; } .arc-note p { margin: 4px 0; }
+.arc-note summary { cursor: pointer; color: #9bc795; font-size: 13px; } .arc-note button { margin-top: 6px; background: none; border: 1px solid rgba(94,234,212,.4); color: #bfeee8; font: 600 12px "Rajdhani", sans-serif; padding: 3px 9px; cursor: pointer; } .arc-empty { color: #7fa87a; }
+.arc-lock { position: absolute; inset: 0; background: rgba(1,4,2,.9); display: grid; place-content: center; text-align: center; gap: 6px; } .arc-lock.hidden { display: none; } .arc-lock b { font: 900 18px "Orbitron", sans-serif; color: #ffd36a; }
+#arc-btn { position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 59; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px; background: rgba(2,10,4,.92); color: #39ff14; border: 1.5px solid #39ff14; border-right: 0; cursor: pointer; clip-path: polygon(10px 0, 100% 0, 100% 100%, 10px 100%, 0 calc(100% - 10px), 0 10px); transition: all .2s; box-shadow: 0 0 18px rgba(57,255,20,.25); }
+#arc-btn span { writing-mode: vertical-rl; transform: rotate(180deg); font: 700 11px "Orbitron", sans-serif; letter-spacing: .25em; } #arc-btn i { font-style: normal; font-size: 18px; } #arc-btn kbd { font: 700 10px "Orbitron", sans-serif; border: 1px solid currentColor; padding: 1px 4px; }
+#arc-btn:hover { background: #39ff14; color: #021; } #arc-btn.on { right: min(440px, 94vw); }
+#arc-btn.locked { color: #6a7a68; border-color: #3a4a38; box-shadow: none; } #arc-btn.locked i::after { content: " \1F512"; font-size: 12px; } #arc-btn.locked:hover { background: rgba(2,10,4,.92); color: #6a7a68; }
+#arc-btn.shake { animation: shake .4s; } @keyframes shake { 25% { transform: translate(-6px, -50%); } 75% { transform: translate(4px, -50%); } }
+@media (max-width: 700px) { #arc-btn { top: auto; bottom: 120px; transform: none; } #arc-btn.shake { animation: none; } }
+
+/* in the game: a small pill in the bottom-left corner of the game frame */
+#arc-btn.ingame { position: absolute; top: auto; right: auto; left: 1.4cqw; bottom: 1.4cqw; transform: none; flex-direction: row; gap: .6cqw; padding: .55cqw 1cqw; z-index: 9; border: 1.5px solid #39ff14; clip-path: polygon(.6cqw 0, 100% 0, 100% calc(100% - .6cqw), calc(100% - .6cqw) 100%, 0 100%, 0 .6cqw); }
+#arc-btn.ingame span { writing-mode: horizontal-tb; transform: none; font-size: clamp(9px, .85cqw, 13px); } #arc-btn.ingame i { font-size: clamp(11px, 1.1cqw, 16px); } #arc-btn.ingame kbd { font-size: clamp(8px, .7cqw, 11px); }
+#arc-btn.ingame.on { right: auto; } #arc-btn.ingame.locked { opacity: .45; } #arc-btn.ingame.shake { animation: shake2 .4s; } @keyframes shake2 { 25% { transform: translateX(-5px); } 75% { transform: translateX(4px); } }
+@media (pointer: coarse) { #arc-btn.ingame { bottom: auto; top: 8cqw; } }
+#arc-btn.ingame { bottom: auto; top: 7.4cqw; }

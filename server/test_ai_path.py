@@ -42,13 +42,19 @@ def payload_for(props, user):
                 "chapters": [{"title": "Light", "goal": "Understand light", "concept_ids": ["c1"], "mood": "science", "fight": "magic", "boss_name": "Prism Warden", "npc_names": ["Ada", "Ben"]},
                              {"title": "Water", "goal": "Understand water", "concept_ids": ["c2", "bogus"], "mood": "history", "fight": "martial", "boss_name": "Aqua Brute", "npc_names": ["Solo"]}]}
     if "npcs" in props:
-        return {"npcs": [{"npc_name": "Ada", "concept_ids": ["c1"], "lines": [{"text": "Chlorophyll absorbs light energy.", "highlight": ["Chlorophyll", "nothere"]}, {"text": "Second line.", "highlight": []}], "teacher_note": "Ask why leaves are green."},
-                         {"npc_name": "Ben", "concept_ids": ["c2"], "lines": [{"text": "Water is split.", "highlight": ["Water"]}], "teacher_note": "Draw it."}],
+        return {"npcs": [{"npc_name": "Ada", "concept_ids": ["c1"], "lines": [{"text": "Chlorophyll absorbs light energy.", "highlight": ["Chlorophyll", "nothere"]}, {"text": "Second line.", "highlight": []}], "teacher_note": "Ask why leaves are green.", "key_idea": "Chlorophyll absorbs light."},
+                         {"npc_name": "Ben", "concept_ids": ["c2"], "lines": [{"text": "Water is split.", "highlight": ["Water"]}], "teacher_note": "Draw it.", "key_idea": "Water splits."}]}
+    if "tablets" in props:
+        return {"tablets": [{"title": "Light", "concept_ids": ["c1"], "points": ["Chlorophyll absorbs light energy.", "Leaves look green because green light is reflected."], "example": "A leaf in sunlight.", "mistake": "Plants do not eat soil.", "terms": [{"term": "Chlorophyll", "meaning": "green pigment"}]},
+                            {"title": "Water", "concept_ids": ["c2"], "points": ["Water is split in light.", "Oxygen is released."], "example": "Bubbles from pond weed.", "mistake": "", "terms": []}],
                 "mission": {"kind": "order", "instruction": "Order the steps.", "items": ["one", "two", "three", "four"], "pairs": []}}
+    if "test" in props and "obstacles" not in props:
+        it = iter(range(20, 40))
+        return {"test": [question(next(it)) for _ in range(4)], "spare": [question(next(it)) for _ in range(3)]}
     if "obstacles" in props:
         it = iter(range(40))
         nxt = lambda: question(next(it))
-        return {"obstacles": [{"question": nxt(), "hint": "hint 1"}, {"question": nxt(), "hint": "hint 2"}], "match": [nxt() for _ in range(5)], "arcade": [nxt() for _ in range(3)], "test": [nxt() for _ in range(5)], "spare": [nxt() for _ in range(3)]}
+        return {"obstacles": [{"question": nxt(), "hint": "hint 1"}, {"question": nxt(), "hint": "hint 2"}], "match": [nxt() for _ in range(3)], "arcade": [nxt() for _ in range(3)]}
     ids = re.findall(r"^(q\d+):", user, re.M)       # verify: agree with the claimed answer (n % 4) except q3 invalid, q5 disagrees
     return {"results": [{"id": i, "valid": i != "q3", "correct_index": (int(i[1:]) + (1 if i == "q5" else 0)) % 4, "issue": ""} for i in ids]}
 

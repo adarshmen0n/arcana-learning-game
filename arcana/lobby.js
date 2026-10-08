@@ -63,3 +63,4 @@ const Lobby = (() => {
   function stop() { if (game) { game.destroy(true); game = null; sc = null; } }
   return { start, side, setGender, stop, get ready() { return !!sc; }, get game() { return game; } };
 })();
+window.Lobby = Lobby;

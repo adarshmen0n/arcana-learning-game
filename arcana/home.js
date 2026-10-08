@@ -151,7 +151,7 @@ async function load() {
 }
 
 // ------------------------------------------------------------------ the hub: top navigation + screens over a living 3D-ish stage
-const VIEWS = [["hub", "HUB"], ["roadmap", "ROADMAP"], ["armory", "ARMORY"], ["library", "LIBRARY"], ["coach", "PROGRESS"]];
+const VIEWS = [["hub", "HUB"], ["roadmap", "ROADMAP"], ["arc", "ARC SEARCH"], ["armory", "ARMORY"], ["library", "LIBRARY"], ["coach", "PROGRESS"]];
 let sfxCtx = null, lastBlip = 0;
 function blip(f = 520, d = 0.04, v = 0.025) { const n = performance.now(); if (n - lastBlip < 60) return; lastBlip = n; try { sfxCtx = sfxCtx || new (window.AudioContext || window.webkitAudioContext)(); const o = sfxCtx.createOscillator(), g = sfxCtx.createGain(); o.type = "square"; o.frequency.value = f; g.gain.value = v; o.connect(g); g.connect(sfxCtx.destination); o.start(); g.gain.exponentialRampToValueAtTime(0.0001, sfxCtx.currentTime + d); o.stop(sfxCtx.currentTime + d); } catch (e) {} }
 document.addEventListener("pointerover", (e) => { const t = e.target.closest && e.target.closest(".gbtn,#nav button,.rowi,.eq,.nx"); if (t && t !== document.__lastBlipEl) { document.__lastBlipEl = t; blip(760, 0.03, 0.015); } });
@@ -227,8 +227,15 @@ const VIEW_FN = {
       <div class="plate">${sh("03", "ENHANCEMENTS")}<div class="rows">${ups}</div></div></div>`;
   },
   library() {
-    const rows = S.games.map((g) => `<div class="rowi"><div class="cap">${g.progress && g.progress.finished ? "&#10003;" : "&#9654;"}</div><div><h3>${esc(g.title)}</h3><p>${g.progress ? (g.progress.finished ? "Finished" : "Chapter " + (g.progress.chapter + 1)) + " &middot; " + g.progress.score + " pts" : "New"}</p></div><div class="acts" style="margin:0"><a class="gbtn sm" href="/play.html?game=${encodeURIComponent(g.id)}"><span>${g.progress && !g.progress.finished ? "Continue" : "Play"}</span></a><button class="gbtn sm danger" data-del="${esc(g.id)}"><span>Delete</span></button></div></div>`).join("");
+    const rows = S.games.map((g) => `<div class="rowi"><div class="cap">${g.progress && g.progress.finished ? "&#10003;" : "&#9654;"}</div><div><h3>${esc(g.title)}</h3><p>${g.progress ? (g.progress.finished ? "Finished" : "Chapter " + (g.progress.chapter + 1)) + " &middot; " + g.progress.score + " pts" : "New"}</p></div><div class="acts" style="margin:0"><a class="gbtn sm" href="/play.html?game=${encodeURIComponent(g.id)}"><span>${g.progress && !g.progress.finished ? "Continue" : "Play"}</span></a>${g.hasSource ? `<button class="gbtn sm" data-rebuild="${esc(g.id)}" title="Make a new version of this game with the new lessons, tablets and fewer questions"><span>Rebuild</span></button>` : ""}<button class="gbtn sm danger" data-del="${esc(g.id)}"><span>Delete</span></button></div></div>`).join("");
     return `<div class="col">${uploadBlock("Make a game from your notes", false)}<div class="plate">${sh("01", "YOUR GAMES")}<div class="rows">${rows || '<div class="empty">No games yet.</div>'}</div></div></div>`;
+  },
+  arc() {
+    const gs = S.games;
+    S.arcGame = S.arcGame && gs.some((g) => g.id === S.arcGame) ? S.arcGame : "";
+    return `<div class="wide">${sh("01", "ARC SEARCH")}<p class="muted" style="margin:-6px 0 14px">Ask Arc anything. Choose one of your games and Arc also uses the notes you uploaded for it.</p>
+      <div class="gtabs"><button data-ag="" class="${S.arcGame ? "" : "on"}">General</button>${gs.map((g) => `<button data-ag="${esc(g.id)}" class="${S.arcGame === g.id ? "on" : ""}">${esc(g.title.slice(0, 28))}</button>`).join("")}</div>
+      <div id="arcbox"></div></div>`;
   },
   coach() {
     const st = S.rm.stats, ach = S.rm.achievements;
@@ -247,8 +254,22 @@ const AFTER = {
     }));
     document.querySelectorAll("[data-up]").forEach((b) => (b.onclick = async () => { try { S.hero = await api("/api/hero/upgrade", "POST", { id: b.dataset.up }); toast("Enhancement upgraded"); go("armory"); } catch (er) { toast(er.message); } }));
   },
-  library() { if ($("#upcard")) wireUpload(); document.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => { if (confirm("Delete this game and your progress in it?")) { await api("/api/games/" + b.dataset.del, "DELETE"); await refresh(); } })); },
+  library() {
+    document.querySelectorAll("[data-rebuild]").forEach((b) => (b.onclick = async () => {
+      if (!confirm("Build a new version of this game with the new lessons and knowledge tablets? Your current game stays as it is.")) return;
+      b.disabled = true;
+      try {
+        const job = await api("/api/games/" + b.dataset.rebuild + "/rebuild", "POST", {}); toast("Rebuilding: it appears in your games when it is ready (a few minutes).");
+        const tick = async () => { const j = await api("/api/jobs/" + job.id).catch(() => null); if (!j) return; if (j.status === "done") { toast("New version ready: " + (j.title || "")); refresh(); } else if (j.status === "error") toast(j.error); else setTimeout(tick, 4000); };
+        tick();
+      } catch (e) { toast(e.message); b.disabled = false; }
+    }));
+    if ($("#upcard")) wireUpload(); document.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => { if (confirm("Delete this game and your progress in it?")) { await api("/api/games/" + b.dataset.del, "DELETE"); await refresh(); } })); },
   coach() {},
+  arc() {
+    Arc.mount({ inline: true, container: $("#arcbox"), gameId: S.arcGame });
+    document.querySelectorAll("[data-ag]").forEach((b) => (b.onclick = () => { S.arcGame = b.dataset.ag; go("arc"); }));
+  },
 };
 
 // ------------------------------------------------------------------ roadmap (SVG snake path, one per game)

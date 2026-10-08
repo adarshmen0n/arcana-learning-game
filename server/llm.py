@@ -5,6 +5,7 @@ never leave this process.
 Claude uses the official Anthropic SDK (structured outputs, prompt caching, web search, PDF reading).
 Every other service speaks the OpenAI-compatible chat API and is called over plain HTTPS."""
 import base64
+import http.client
 import json
 import os
 import pathlib
@@ -264,7 +265,7 @@ COMPAT = {
     "openai": ("https://api.openai.com/v1", ("OPENAI_API_KEY",), "OPENAI_MODEL", ["gpt-4o-mini", "gpt-4.1-mini", "mini"], 200_000, 16000, True, True),
     "groq": ("https://api.groq.com/openai/v1", ("GROQ_API_KEY",), "GROQ_MODEL", ["gpt-oss-120b", "llama-3.3-70b", "qwen3", "gpt-oss-20b", "llama", "qwen"], 18_000, 6000, False, True),
     "cerebras": ("https://api.cerebras.ai/v1", ("CEREBRAS_API_KEY",), "CEREBRAS_MODEL", ["gpt-oss-120b", "llama-3.3-70b", "llama3.3-70b", "qwen", "llama"], 22_000, 6000, False, True),
-    "openrouter": ("https://openrouter.ai/api/v1", ("OPENROUTER_API_KEY",), "OPENROUTER_MODEL", [":free"], 60_000, 8000, False, False),
+    "openrouter": ("https://openrouter.ai/api/v1", ("OPENROUTER_API_KEY",), "OPENROUTER_MODEL", [":free"], 60_000, 16000, False, False),
 }
 DEFAULT_ORDER = ["claude", "gemini", "mistral", "deepseek", "openai", "groq", "cerebras", "openrouter", "custom", "ollama"]
 
@@ -371,7 +372,7 @@ class CompatProvider(Provider):
                 t = threading.Timer(600, lambda: self.bad.discard(m)); t.daemon = True; t.start()
                 raise Skip("model busy; trying another", cooldown=0)
             raise Skip(f"HTTP {e.code}", cooldown=20 if e.code >= 500 else 0)
-        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException, json.JSONDecodeError, OSError) as e:   # dropped or truncated connections are retried
             raise Skip("cannot reach the service", cooldown=20)
 
     def _post_any_model(self, body):

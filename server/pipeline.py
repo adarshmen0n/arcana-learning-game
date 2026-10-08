@@ -278,7 +278,8 @@ def split_parts(text):
     size = max(PART_WORDS, -(-words // MAX_CHAPTERS))
     parts = retrieval.split(text, size=size, overlap=0)
     while len(parts) > 1 and len(parts[-1].split()) < size * 0.35:   # fold a tiny tail into the previous part
-        parts[-2] = parts[-2] + " " + parts.pop()
+        tail = parts.pop()
+        parts[-1] = parts[-1] + " " + tail
     return parts or [text]
 
 

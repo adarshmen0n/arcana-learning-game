@@ -67,6 +67,10 @@ long_text = " ".join(f"Sentence number {i} explains idea {i % 37} about water an
 parts = pipeline.split_parts(long_text)
 norm = lambda t: _re.sub(r"\s+", " ", t).strip()
 ok(len(parts) >= 5 and norm(" ".join(parts)) == norm(long_text), "the upload is split in order and every word is in exactly one part")
+for n in (60, 300, 470, 500, 520, 600, 700, 900, 950, 1000):           # short and medium uploads, including ones that leave a tiny tail
+    txt = " ".join(f"Line {i} says something about leaves." for i in range(n // 6 + 1))
+    got = pipeline.split_parts(txt)
+    ok(got and norm(" ".join(got)) == norm(txt), f"an upload of about {n} words splits without losing anything")
 huge = " ".join(["Word filler sentence about history and science."] * 6000)
 ok(len(pipeline.split_parts(huge)) <= pipeline.MAX_CHAPTERS, "very long files are capped at the maximum number of chapters")
 plan = {"concepts": [{"id": "c1", "name": "x"}], "chapters": [{"title": "One", "goal": "g", "concept_ids": ["c1"], "mood": "science", "fight": "magic", "boss_name": "B", "npc_names": ["A"]}]}

@@ -6,7 +6,7 @@ const Lobby = (() => {
   class LobbyScene extends Phaser.Scene {
     constructor() { super("lobby"); }
     create() {
-      sc = this; this.camX = 0; this.objs = []; this.layers = []; this.timer = 2.2; this.busy = false; this.heroX = W * 0.74; this.targetX = W * 0.74;
+      sc = this; this.camX = 0; this.objs = []; this.layers = []; this.timer = 2.2; this.busy = false; this.heroX = W * 0.6; this.targetX = W * 0.6;
       People.props(this);
       this.applyTheme(want.theme); this.applyHero(want.gender);
       this.cameras.main.postFX && this.renderer.type === Phaser.WEBGL && (this.cameras.main.postFX.addVignette(0.5, 0.5, 0.95, 0.35), this.cameras.main.postFX.addBloom(0xffffff, 1, 1, 1.0, 0.6, 4));

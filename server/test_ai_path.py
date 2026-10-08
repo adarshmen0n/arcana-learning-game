@@ -23,6 +23,8 @@ os.environ["GEMINI_API_KEY"] = "test-gemini"
 os.environ["GROQ_API_KEY"] = "test-groq"
 import llm  # noqa: E402
 import pipeline  # noqa: E402
+import websearch  # noqa: E402
+websearch.lookup = lambda q: [{"title": "Chlorophyll", "url": "https://en.wikipedia.org/wiki/Chlorophyll", "content": "Chlorophyll absorbs mostly blue and red light and reflects green."}]   # no internet in tests
 import pathlib, tempfile
 pipeline.SCRIPTS = pathlib.Path(tempfile.mkdtemp())   # tests never touch your saved games
 
@@ -148,6 +150,7 @@ serve(5199, FakeClaude)
 serve(5197, compat_handler("gemini", GEM))
 serve(5198, compat_handler("groq", GRQ))
 TEXT = open(os.path.join(os.path.dirname(__file__), "..", "samples", "photosynthesis.txt"), encoding="utf-8").read()
+TEXT = TEXT + "\n\n" + TEXT.replace("Photosynthesis", "The process")          # about 800 words: two parts, so two chapters
 
 
 def show(title, job):
@@ -178,7 +181,7 @@ job = run(TEXT)
 p = show("gemini rate-limited -> groq", job)
 assert p["status"] == "done" and SEEN["groq"], p["error"]
 assert llm.PROVIDERS[0].state() == "cooling"
-assert any("web research skipped" in l["msg"].lower() for l in p["logs"])
+assert any("web research added" in l["msg"].lower() for l in p["logs"])          # free web lookup fills thin topics when there is no Claude key
 
 # 3. Bad JSON from first, then it works on the second
 rebuild("badjson", "ok", order="gemini,groq", claude=False)

@@ -12,6 +12,7 @@ import uuid
 import ingest
 import llm
 import student
+import websearch
 import retrieval
 import mockgen
 
@@ -23,7 +24,8 @@ SCRIPTS = config.DATA / "scripts"
 SCRIPTS.mkdir(parents=True, exist_ok=True)
 LOOKS = ["lumen", "thyla", "ranger", "sage"]
 MENTOR_NAMES = ["Mentor Aria", "Archivist Venn", "Sage Orin", "Captain Lyra"]
-ROLES = ["intro", "core", "deep", "recap"]
+ARCADES = [("maze", "Maze Run"), ("snake", "Snake Trail"), ("hill", "Hill Climb Rally"), ("shooter", "Invaders")]
+ROLES = ["intro", "core", "deep", "recap", "more"]
 THEMES = {"science": "crystal_cave", "nature": "ancient_forest", "conflict": "ember_citadel", "history": "desert_canyon", "abstract": "aurora_peaks"}
 JOBS: dict = {}
 
@@ -168,28 +170,47 @@ def _run(job: Job):
 def _ai(job: Job, text: str):
     tally = job.usage
     job.set("analyze", 12, "Analysing the material and planning chapters")
-    words = len(text.split()); target = 1 if words < 250 else max(2, min(6, round(words / 350)))
-    prompt = (f"Plan a game from this material. It is {words} words long, so plan {target} chapter{'s' if target > 1 else ''} (about one per 350 words, at most 6). "
-              "Every concept belongs to exactly one chapter, and no chapter may repeat material another chapter already covers.\n- title: short, engaging.\n- level: who the material is for.\n"
-              "- concepts: every teachable concept (id c1, c2, ...). importance/complexity 1-5. needs_research=true ONLY when the material is thin, ambiguous or likely outdated on that concept "
+    words = len(text.split())
+    parts = split_parts(text)                                     # every word of the upload belongs to exactly one part, in order
+    target = len(parts)
+    marked = "\n\n".join(f"<part {i + 1}>\n{x}\n</part {i + 1}>" for i, x in enumerate(parts))
+    prompt = (f"Plan a game that teaches ALL of this material. It is {words} words long and split into {target} numbered parts. "
+              f"Plan exactly {target} chapter{'s' if target > 1 else ''}, in order: chapter k teaches part k and nothing else, so together the chapters cover every part.\n- title: short, engaging.\n- level: who the material is for.\n"
+              "- concepts: every teachable concept in the whole material (id c1, c2, ...), so nothing is left out. importance/complexity 1-5. needs_research=true ONLY when the material is thin, ambiguous or likely outdated on that concept "
               "(at most 5 overall) and give a focused web research_query; otherwise false and an empty query.\n"
-              "- chapters: split the material at natural topic boundaries into balanced chapters. Each lists the concept_ids it covers (every concept exactly once). "
+              "- chapters: one per part, in part order. Each lists the concept_ids taught in its part (every concept exactly once). "
               "mood picks the world: science (lab, chemistry, technology, anatomy), nature (living things, ecology, geography), conflict (war, politics, law, crime), history (ancient civilisations, culture, religion, literature), abstract (maths, physics, astronomy, logic, computing). Vary the moods across chapters when the material allows. "
               "fight: 'magic' for abstract/energy/theory topics, 'martial' for physical/historical/practical topics. "
               "boss_name: a menacing villain name (a warlord, sorcerer, beast-knight or similar) that fits the chapter (2-3 words). npc_names: four friendly human mentor names (different in every chapter).\n"
               "- final_boss_name: the villain of the final exam. summary: 2 sentences." + student.prompt_block(job.opts.get("profile")))
-    plan = clean_plan(llm.call_json(SYS, prompt, ANALYZE_SCHEMA, doc=doc_block(text), max_tokens=12000, tally=tally, log=job.log))
+    plan = clean_plan(llm.call_json(SYS, prompt, ANALYZE_SCHEMA, doc=doc_block(marked), max_tokens=14000, tally=tally, log=job.log))
+    plan = align_parts(plan, parts)
     job.total = len(plan["chapters"])
     job.script = {"schemaVersion": 2, "projectId": job.id, "title": plan["title"], "audience": {"level": plan["level"], "modes": ["student"]},
                   "summary": plan["summary"], "chapters": [], "finalBoss": final_boss(plan),
                   "source": {"filename": job.filename, "words": len(text.split()), "mode": "ai", "model": llm.label()}}
-    job.log(f"Plan: {job.total} chapters, {len(plan['concepts'])} concepts")
+    job.log(f"Plan: {job.total} chapters covering all {words:,} words, {len(plan['concepts'])} concepts")
 
     notes = ""
     flagged = [c for c in plan["concepts"] if c["needs_research"] and c["research_query"].strip()][:5]
-    if flagged and not llm.has_web():
-        job.log("Web research skipped: it needs a Claude key. Using your material only.")
+    if flagged and not llm.has_web():                              # free fallback: live web lookup, cited
+        blocks = []
+        for c in flagged:
+            try:
+                found = websearch.lookup(c["research_query"])[:2]
+            except Exception:
+                found = []
+            if found:
+                blocks.append(f"[{c['name']}]\n" + "\n".join(w["content"][:900] for w in found) + "\nSources: " + "; ".join(w["url"] for w in found))
+                c["sources"] = [{"title": w["title"], "url": w["url"]} for w in found]
         flagged = []
+        if blocks:
+            job.log(f"Web research added for {len(blocks)} topic(s) from live sources")
+            research_notes = "\n\n".join(blocks)
+        else:
+            research_notes = ""
+    else:
+        research_notes = ""
     if flagged:
         job.set("research", 22, f"Searching the web to fill {len(flagged)} gaps")
         blocks = []
@@ -206,19 +227,20 @@ def _ai(job: Job, text: str):
                     job.log(f"Research skipped for '{c['name']}': {e}")
         notes = "\n\n".join(blocks)
         job.log("Web research added" if notes else "No web research available; using your material only")
+    if not notes and research_notes:
+        notes = research_notes
     index = retrieval.Index(text)
     byid = {c['id']: c for c in plan['concepts']}
 
     def doc_for(i):
-        ch = plan['chapters'][i]
-        cons = [byid[c] for c in ch['concept_ids'] if c in byid]
-        query = ch['title'] + ' ' + ch['goal'] + ' ' + ' '.join(c['name'] + ' ' + c['summary'] for c in cons)
-        return doc_block(index.context(query, 1800), notes)
+        prev = parts[i - 1].split(".")[-3:] if i else []
+        lead = ("(Previously: " + ".".join(prev).strip()[-300:] + ")\n\n") if prev else ""
+        return doc_block(lead + parts[i], notes)
 
     def build(i):
         for attempt in range(1, 7):
             try:
-                return gen_chapter(job, plan, i, doc_for(i), index)
+                return gen_chapter(job, plan, i, doc_for(i), index, parts[i])
             except llm.LLMError as e:
                 msg = str(e)
                 if attempt == 6 or "rejected" in msg or "declined" in msg:
@@ -246,11 +268,64 @@ def _ai(job: Job, text: str):
     job.set("finish", 96, "Assembling your game")
 
 
+MAX_CHAPTERS = 20
+PART_WORDS = 450
+
+
+def split_parts(text):
+    """Sequential parts of about PART_WORDS words (cut at sentence ends). Long files get bigger parts so the game stays at most MAX_CHAPTERS chapters."""
+    words = len(text.split())
+    size = max(PART_WORDS, -(-words // MAX_CHAPTERS))
+    parts = retrieval.split(text, size=size, overlap=0)
+    while len(parts) > 1 and len(parts[-1].split()) < size * 0.35:   # fold a tiny tail into the previous part
+        parts[-2] = parts[-2] + " " + parts.pop()
+    return parts or [text]
+
+
+def align_parts(plan, parts):
+    """Make sure there is exactly one chapter per part, whatever the model returned."""
+    chs, n = plan["chapters"], len(parts)
+    if len(chs) > n:
+        extra = chs[n:]
+        chs = chs[:n]
+        for e in extra:
+            chs[-1]["concept_ids"] += [c for c in e["concept_ids"] if c not in chs[-1]["concept_ids"]]
+    while len(chs) < n:
+        k = len(chs)
+        first = parts[k].split(".")[0][:50].strip() or f"Part {k + 1}"
+        chs.append({"title": first, "goal": "Learn everything in this part of your material", "concept_ids": [], "mood": ["science", "nature", "history", "abstract", "conflict"][k % 5],
+                    "fight": "martial", "boss_name": "Rogue Warden", "npc_names": MENTOR_NAMES[:]})
+    for ch in chs:
+        if not ch["concept_ids"]:
+            ch["concept_ids"] = [plan["concepts"][min(len(plan["concepts"]) - 1, chs.index(ch))]["id"]]
+        if len(ch["npc_names"]) < 4:
+            ch["npc_names"] = (ch["npc_names"] + [m for m in MENTOR_NAMES if m not in ch["npc_names"]])[:4]
+    plan["chapters"] = chs
+    return plan
+
+
+def coverage(part, gen):
+    """Share of the part's passages that the lessons actually teach, plus the passages that were missed."""
+    taught = set(retrieval.tokens(lesson_text(gen)))
+    chunks = retrieval.split(part, size=60, overlap=0)
+    missed, ok = [], 0
+    for c in chunks:
+        toks = set(retrieval.tokens(c))
+        if not toks:
+            continue
+        if len(toks & taught) / len(toks) >= 0.45:
+            ok += 1
+        else:
+            missed.append(c)
+    total = ok + len(missed)
+    return (ok / total if total else 1.0), missed
+
+
 def clean_plan(plan):
     ids = {c["id"] for c in plan["concepts"]}
     if not plan["chapters"] or not plan["concepts"]:
         raise PipelineError("The model could not find chapters in this material.")
-    plan["chapters"] = plan["chapters"][:6]
+    plan["chapters"] = plan["chapters"][:MAX_CHAPTERS]
     for ch in plan["chapters"]:
         ch["concept_ids"] = [c for c in ch["concept_ids"] if c in ids] or [plan["concepts"][0]["id"]]
         if len(ch["npc_names"]) < 4:
@@ -266,19 +341,20 @@ def final_boss(plan):
             "count": 15, "passMarkRatio": 0.7, "extraQuestions": []}
 
 
-def gen_chapter(job, plan, i, doc, index=None):
+def gen_chapter(job, plan, i, doc, index=None, part=None):
     ch, byid = plan["chapters"][i], {c["id"]: c for c in plan["concepts"]}
     cons = [byid[c] for c in ch["concept_ids"] if c in byid]
     listing = "\n".join(f"- {c['id']} {c['name']}: {c['summary']}" for c in cons)
     head = f"Chapter {i + 1} of {len(plan['chapters'])}: \"{ch['title']}\". Goal: {ch['goal']}. Audience level: {plan['level']}.\nConcepts:\n{listing}\n" + student.prompt_block(job.opts.get("profile")) + "\n"
     names = (ch["npc_names"] + MENTOR_NAMES)[:4]
-    lessons = (head + "Write the TEACHING for this chapter. The game teaches far more than it tests: a student who has never seen this material must fully understand it from these lessons alone.\n"
+    lessons = (head + "Write the TEACHING for this chapter. Teach EVERYTHING in the study material below (this chapter's part): every fact, definition, number, date, name, example and step of every process. Skip nothing. "
+               "A student who has never seen this material must fully understand it from these lessons alone. Explain in an easy way, as to a curious 15-year-old: short sentences, everyday analogies, and define every technical term the first time it appears.\n"
                "- npcs: exactly 4 human mentors, in this order:\n"
                f"  1. role 'intro', {names[0]}: hook the student with why this topic matters, give the big picture, then teach the first concept.\n"
                f"  2. role 'core', {names[1]}: teach the central concepts step by step: define each one precisely, explain how and why it works, give a concrete example.\n"
                f"  3. role 'deep', {names[2]}: go deeper: mechanisms, cause and effect, how the concepts connect, a worked example or real-world case, and one common mistake to avoid.\n"
                f"  4. role 'recap', {names[3]}: summarise the whole chapter in plain words and state the key takeaways to remember.\n"
-               "Each mentor speaks 5 to 7 lines. Each line is one clear idea, max 300 characters, warm and vivid like a great teacher talking (not a textbook). "
+               "Each mentor speaks 5 to 8 lines (more when the part is long). Each line is one clear idea, max 300 characters, warm and vivid like a great teacher talking (not a textbook). "
                "Every concept id above must be taught by at least one mentor. Use only facts from the material. "
                "highlight: 1-3 key terms that appear verbatim in that line. key_idea: the single most important sentence that mentor taught (max 160 characters). "
                "teacher_note: one short study tip (max 140 characters). concept_ids: the concepts that mentor teaches.")
@@ -298,6 +374,24 @@ def gen_chapter(job, plan, i, doc, index=None):
     job.log(f"Writing chapter {i + 1}: lessons")
     gen = llm.call_json(SYS, lessons, LESSON_SCHEMA, doc=doc, max_tokens=12000, tally=job.usage, log=job.log)
     gen.update(llm.call_json(SYS, tablets, TABLET_SCHEMA, doc=doc, max_tokens=9000, tally=job.usage, log=job.log))
+    if part:                                                      # coverage pass: anything in this part that was not taught gets an extra lesson
+        pct, missed = coverage(part, gen)
+        if missed and pct < 0.92:
+            extra = ("These parts of the study material were NOT taught yet. Write ONE more mentor (npc_name: " + (ch["npc_names"] + MENTOR_NAMES)[4 % len(ch["npc_names"] + MENTOR_NAMES)] +
+                     ", role 'more') who teaches all of them clearly and simply, 4 to 8 lines, max 300 characters each, with an analogy where it helps. key_idea: the most important point. concept_ids from the list above.\n\nNot yet taught:\n- " + "\n- ".join(m[:400] for m in missed[:10]))
+            try:
+                more = llm.call_json(SYS, head + extra, LESSON_SCHEMA, doc=doc, max_tokens=8000, tally=job.usage, log=job.log)
+                for d in more.get("npcs", [])[:1]:
+                    d["role"] = "more"
+                    gen["npcs"].append(d)
+                pct2, _ = coverage(part, gen)
+                job.log(f"Chapter {i + 1}: coverage {round(pct * 100)}% -> {round(pct2 * 100)}% after an extra lesson")
+                pct = pct2
+            except llm.LLMError as e:
+                job.log(f"Chapter {i + 1}: extra lesson skipped ({str(e)[:80]})")
+        else:
+            job.log(f"Chapter {i + 1}: lessons cover {round(pct * 100)}% of its part of your material")
+        gen["_coverage"] = round(pct, 2)
     taught = lesson_text(gen)
     focus = ("\nWhat the lessons taught in this chapter (ask ONLY about ideas explained here, so every question checks something the student was taught):\n" + taught + "\n\n") if taught else "\n"
     qa = head + focus + "Write quiz questions for this chapter.\n- obstacles: 2 questions, each with a hint that nudges without revealing the answer.\n- match: 3 questions. arcade: 3 questions.\n\n" + rules
@@ -491,7 +585,7 @@ def assemble_chapter(i, n, ch, cons, gen, level):
             if t:
                 lines.append({"text": t, "highlight": [h for h in l.get("highlight", []) if h and h.lower() in t.lower()][:3]})
         if lines:
-            role = d.get("role") if d.get("role") in ROLES else ROLES[min(j, 3)]
+            role = d.get("role") if d.get("role") in ROLES else (ROLES[j] if j < 4 else "more")
             sc("npc", conceptIds=[c for c in d.get("concept_ids", []) if c in cids] or cids[:2], role=role,
                npc={"name": str(d.get("npc_name") or MENTOR_NAMES[j % 4])[:30], "look": LOOKS[(i * 2 + j) % 4]}, dialogue=lines,
                keyIdea=str(d.get("key_idea", "")).strip()[:200], teacherNote=str(d.get("teacher_note", ""))[:200])
@@ -511,7 +605,7 @@ def assemble_chapter(i, n, ch, cons, gen, level):
     npc(0)                                                     # teach
     tablet(0)                                                  # teach
     npc(1)                                                     # teach
-    with_arcade = bool(arcade) and i % 2 == 0                  # keep every chapter at least 60% teaching: the arcade replaces the seal
+    with_arcade = bool(arcade)                                 # a mini-game in every chapter (it replaces the seal, so teaching stays above 60%)
     if obstacles and not with_arcade:
         sc("obstacle", question=obstacles[0][0], hint=obstacles[0][1])
     tablet(1)                                                  # teach
@@ -519,7 +613,10 @@ def assemble_chapter(i, n, ch, cons, gen, level):
     if match:
         sc("match", opponent={"name": "Rival Ranger", "kind": "sentinel", "skill": round(min(0.8, 0.55 + 0.05 * i), 2)}, questions=match)
     if with_arcade:
-        sc("maze" if (i // 2) % 2 == 0 else "shooter", title="Maze Run" if (i // 2) % 2 == 0 else "Invaders", questions=arcade, ghosts=2)
+        kind = ARCADES[i % len(ARCADES)]
+        sc(kind[0], title=kind[1], questions=arcade, ghosts=2)
+    for j in range(4, len(gen.get("npcs", []))):              # extra lessons that close coverage gaps
+        npc(j)
     npc(3)                                                     # teach (recap)
     m = gen.get("mission") or {}
     items = [str(x).strip()[:120] for x in m.get("items", []) if str(x).strip()]
@@ -533,7 +630,7 @@ def assemble_chapter(i, n, ch, cons, gen, level):
     spare_all = spare + [q for q, _ in obstacles[(0 if with_arcade else 1):]]
     sc("mini_boss", boss={"name": str(ch.get("boss_name") or "Rogue Enforcer")[:30], "kind": "enforcer" if i % 2 == 0 else "colossus", "fight": ch.get("fight", "martial")},
        pool="chapter", count=5, questions=spare_all[:6])
-    return {"id": f"ch{i + 1}", "title": str(ch["title"])[:60], "goal": str(ch["goal"])[:140], "theme": {"background": THEMES.get(ch.get("mood"), "ancient_forest")},
+    return {"id": f"ch{i + 1}", "title": str(ch["title"])[:60], "goal": str(ch["goal"])[:140], "theme": {"background": THEMES.get(ch.get("mood"), "ancient_forest")}, "coverage": gen.get("_coverage"),
             "concepts": [{"id": c["id"], "name": c["name"][:60], **({"sources": c["sources"]} if c.get("sources") else {})} for c in cons], "scenes": scenes}
 
 

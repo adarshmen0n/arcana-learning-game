@@ -209,7 +209,7 @@ const UI = (() => {
   function portraitURL(id) {
     try { const src = sceneRef.textures.get(`${id}_head`).getSourceImage(); const cv = document.createElement("canvas"); cv.width = cv.height = 128; const x = cv.getContext("2d"); const s = Math.min(112 / src.width, 112 / src.height); x.drawImage(src, (128 - src.width * s) / 2, (128 - src.height * s) / 2, src.width * s, src.height * s); return cv.toDataURL(); } catch (e) { return ""; }
   }
-  const ROLE = { intro: "INTRODUCTION", core: "CORE LESSON", deep: "DEEP DIVE", recap: "RECAP", review: "PERSONAL REVIEW" };
+  const ROLE = { intro: "INTRODUCTION", core: "CORE LESSON", deep: "DEEP DIVE", recap: "RECAP", review: "PERSONAL REVIEW", more: "MORE TO KNOW" };
   function dialogue(npc, lines, { teacherNote, keyIdea, role } = {}) {
     return new Promise((resolve) => {
       let i = 0, timer = null, full = "", pos = 0;

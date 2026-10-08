@@ -61,4 +61,19 @@ ok(j["scenes"][0]["type"] == "npc" and j["scenes"][1]["practice"], "it becomes a
 j2 = {"status": "running", "ts": time.time()}
 remedial._work(user, "gamewater00001", "zz", j2)
 ok(j2["status"] == "error", "an unknown topic is refused")
+print("full coverage of the upload")
+import re as _re
+long_text = " ".join(f"Sentence number {i} explains idea {i % 37} about water and energy in detail." for i in range(400))
+parts = pipeline.split_parts(long_text)
+norm = lambda t: _re.sub(r"\s+", " ", t).strip()
+ok(len(parts) >= 5 and norm(" ".join(parts)) == norm(long_text), "the upload is split in order and every word is in exactly one part")
+huge = " ".join(["Word filler sentence about history and science."] * 6000)
+ok(len(pipeline.split_parts(huge)) <= pipeline.MAX_CHAPTERS, "very long files are capped at the maximum number of chapters")
+plan = {"concepts": [{"id": "c1", "name": "x"}], "chapters": [{"title": "One", "goal": "g", "concept_ids": ["c1"], "mood": "science", "fight": "magic", "boss_name": "B", "npc_names": ["A"]}]}
+ok(len(pipeline.align_parts(plan, ["a", "b", "c"])["chapters"]) == 3, "a chapter is added for any part the planner forgot")
+part = "Evaporation turns surface water into vapour when heated. Condensation forms clouds when vapour cools. Precipitation falls as rain or snow."
+full = {"npcs": [{"lines": [{"text": "Evaporation turns surface water into vapour when the sun heats it."}, {"text": "Condensation forms clouds when vapour cools high up."}, {"text": "Precipitation falls as rain or snow."}]}], "tablets": []}
+ok(pipeline.coverage(part, full)[0] == 1.0, "lessons that teach the whole part score full coverage")
+pct, missed = pipeline.coverage(part, {"npcs": [{"lines": [{"text": "Evaporation turns surface water into vapour when heated."}]}], "tablets": []})
+ok(pct < 0.92 and missed, "untaught passages are detected so an extra lesson can be written")
 print("\nGENERATION OK")

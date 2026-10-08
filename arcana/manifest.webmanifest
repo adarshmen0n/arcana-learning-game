@@ -2,10 +2,11 @@
  "name": "Arcana AI",
  "short_name": "Arcana",
  "description": "Turn study material into a game.",
- "start_url": "/",
+ "id": "/",
+ "start_url": "/?source=app",
  "scope": "/",
- "display": "fullscreen",
- "orientation": "landscape",
+ "display": "standalone",
+ "orientation": "any",
  "background_color": "#020503",
  "theme_color": "#020503",
  "icons": [
@@ -18,7 +19,7 @@
    "src": "icon-512.png",
    "sizes": "512x512",
    "type": "image/png",
-   "purpose": "any maskable"
+   "purpose": "any"
   }
  ]
 }

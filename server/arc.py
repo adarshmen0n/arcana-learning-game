@@ -1,6 +1,7 @@
 """Arc Search: the AI assistant inside ARCANA. Answers anything, uses live web results (so changing facts are current) and,
 inside a game, the student's own uploaded notes. Conversations are saved per student and game. The game locks it during quests."""
 import datetime
+import re
 import time
 
 import db
@@ -72,6 +73,7 @@ def ask(user, message, game_id=None, context=None):
     msgs = [{"role": m["role"], "content": m["content"][:4000]} for m in past if m["role"] in ("user", "assistant")]
     msgs.append({"role": "user", "content": message})
     answer = llm.chat(system, msgs, max_tokens=1800)
+    answer = re.sub("[\u3010\uff3b]([0-9]{1,2})[\u3011\uff3d]", lambda m: "[" + m.group(1) + "]", answer)   # some models cite as 【1】; normalise to [1]
     cited = [(i + 1, w) for i, w in enumerate(web) if f"[{i + 1}]" in answer]
     stored = answer + sources_md(cited)
     now = int(time.time())

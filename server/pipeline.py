@@ -296,15 +296,15 @@ def gen_chapter(job, plan, i, doc, index=None):
              "evidence: a short VERBATIM quote (max 160 characters) copied from the study material that proves the correct answer; never invent it. "
              "skill: recall, understand, apply or analyze, mixed across the set, with the harder skills toward the end. Never repeat a question.")
     job.log(f"Writing chapter {i + 1}: lessons")
-    gen = llm.call_json(SYS, lessons, LESSON_SCHEMA, doc=doc, max_tokens=8000, tally=job.usage, log=job.log)
-    gen.update(llm.call_json(SYS, tablets, TABLET_SCHEMA, doc=doc, max_tokens=5000, tally=job.usage, log=job.log))
+    gen = llm.call_json(SYS, lessons, LESSON_SCHEMA, doc=doc, max_tokens=12000, tally=job.usage, log=job.log)
+    gen.update(llm.call_json(SYS, tablets, TABLET_SCHEMA, doc=doc, max_tokens=9000, tally=job.usage, log=job.log))
     taught = lesson_text(gen)
     focus = ("\nWhat the lessons taught in this chapter (ask ONLY about ideas explained here, so every question checks something the student was taught):\n" + taught + "\n\n") if taught else "\n"
     qa = head + focus + "Write quiz questions for this chapter.\n- obstacles: 2 questions, each with a hint that nudges without revealing the answer.\n- match: 3 questions. arcade: 3 questions.\n\n" + rules
     qb = head + focus + "Write more quiz questions for this chapter (test understanding and application of what was taught).\n- test: 4 questions. spare: 3 extra questions.\n\n" + rules
     job.log(f"Writing chapter {i + 1}: questions")
-    gen.update(llm.call_json(SYS, qa, QUESTION_SET_A, doc=doc, max_tokens=6000, tally=job.usage, log=job.log))
-    gen.update(llm.call_json(SYS, qb, QUESTION_SET_B, doc=doc, max_tokens=6000, tally=job.usage, log=job.log))
+    gen.update(llm.call_json(SYS, qa, QUESTION_SET_A, doc=doc, max_tokens=12000, tally=job.usage, log=job.log))
+    gen.update(llm.call_json(SYS, qb, QUESTION_SET_B, doc=doc, max_tokens=12000, tally=job.usage, log=job.log))
     gen = verify(job, gen, doc, i)
     gen = dedupe(job, gen, i)
     if index is not None:

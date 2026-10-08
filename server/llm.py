@@ -319,7 +319,7 @@ class CompatProvider(Provider):
         ids = [i for i in ids if i and i not in self.bad and not any(s in i.lower() for s in skip)]
         if self.name.startswith("openrouter"):
             ids = [i for i in ids if i.endswith(":free")]
-            pri = ["nemotron-3-super", "qwen3", "gemma-4-31b", "nemotron-3-ultra", "gpt-oss", "llama-3.3-70b", "deepseek", "gemma-4", "mistral"]
+            pri = ["nemotron-3-super", "gpt-oss", "llama-3.3-70b", "gemma-4-31b", "qwen3", "nemotron-3-ultra", "deepseek", "gemma-4", "mistral"]   # reasoning is kept short per call, see json()/chat()
             for k in pri:
                 hit = [i for i in ids if k in i.lower()]
                 if hit:
@@ -347,6 +347,10 @@ class CompatProvider(Provider):
                 raise Skip("key rejected", fatal=True)
             if e.code == 413 or "too large" in low or "reduce your" in low or "context length" in low or "maximum context" in low:
                 raise Skip("request too large for this plan", cooldown=0)
+            if e.code == 429 and "upstream" in low and self.model and not os.environ.get(self.model_env or "_"):   # one free model is busy: use another one
+                m = self.model; self.bad.add(m); self.model = None
+                t = threading.Timer(600, lambda: self.bad.discard(m)); t.daemon = True; t.start()
+                raise Skip("model busy; trying another", cooldown=0)
             if e.code == 429 or "quota" in low or "rate limit" in low:
                 raise Skip("rate limited / quota used", cooldown=_retry_after(e.headers, text))
             if e.code == 402:
@@ -393,6 +397,8 @@ class CompatProvider(Provider):
             body = {"model": model, "messages": msgs, "temperature": 0.4, "max_tokens": min(max_tokens, self.out_cap)}
             if self.name == "gemini" and not getattr(self, "no_reason", False):
                 body["reasoning_effort"] = "low"          # newer Gemini models think first; keep that short so the answer is not cut off
+            if self.name.startswith("openrouter"):
+                body["reasoning"] = {"effort": "low", "exclude": True}
             if self.json_mode and not self.no_json:
                 body["response_format"] = {"type": "json_object"}
             r = self._post_any_model(body)
@@ -418,6 +424,8 @@ class CompatProvider(Provider):
         body = {"model": self.resolve_model(), "messages": [{"role": "system", "content": system}] + messages, "temperature": 0.5, "max_tokens": min(max_tokens, self.out_cap)}
         if self.name == "gemini" and not getattr(self, "no_reason", False):
             body["reasoning_effort"] = "low"
+        if self.name.startswith("openrouter"):
+            body["reasoning"] = {"effort": "low", "exclude": True}
         r = self._post_any_model(body)
         u = r.get("usage") or {}
         _track(tally, u.get("prompt_tokens", 0), u.get("completion_tokens", 0))

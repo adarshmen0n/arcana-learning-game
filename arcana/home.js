@@ -28,14 +28,19 @@ function authView(msg = "", startMode = "login") {
   let mode = startMode, gender = "m", forgot = false, mailOn = false;
   api("/api/status").then((c) => { mailOn = !!c.mail; if (mode === "login") draw(); }).catch(() => {});
   const draw = () => {
-    if (!$("#bg")) { app.innerHTML = `<div class="landing"><canvas id="bg"></canvas><section class="intro"><div class="logoline"><span>ARCANA</span><b>AI</b></div><h2 class="tag">Turn your notes into <em id="rot">a game</em></h2>
-      <p class="muted">Upload your own study material. ARCANA builds a playable adventure from it, learns how you study, and draws a roadmap of what to learn next.</p>
-      <div class="steps"><div><i>1</i><b>Upload</b><span>PDF, notes or text</span></div><div><i>2</i><b>Play</b><span>fight, solve, explore</span></div><div><i>3</i><b>Adapt</b><span>your own difficulty</span></div><div><i>4</i><b>Master</b><span>roadmap to the boss</span></div></div>
-      <p class="by">Created by <b>Adarsh Menon</b></p></section><div id="authbox"></div></div>`; startIntro(); }
+    if (!$("#authbox")) { document.body.classList.add("signin"); app.innerHTML = `<div class="landing2"><section class="l2-copy">
+      <div class="l2-eyebrow">Gamified learning, built from your own notes</div>
+      <h1>Turn any study material into a game you actually finish.</h1>
+      <p class="l2-lead">Upload a PDF or your notes. ARCANA writes the lessons, builds the levels and adjusts the difficulty to how you learn.</p>
+      <ul class="l2-feat"><li><b>Lessons first</b><span>Mentors and knowledge tablets teach every topic before anything is tested.</span></li>
+        <li><b>Real-time combat</b><span>Every enemy you defeat drops a fact from your own material.</span></li>
+        <li><b>Adapts to you</b><span>Difficulty, hints and practice follow your mastery of each topic.</span></li>
+        <li><b>Arc Search</b><span>An AI study assistant that checks live sources and cites them.</span></li></ul>
+      <p class="l2-by">Built by Adarsh Menon</p></section><div id="authbox"></div></div>`; }
     const reg = mode === "register";
     $("#authbox").innerHTML = forgot ? `<div class="card auth"><h1>Reset password</h1><p class="muted">Enter your account email and we will send you a link to choose a new password.</p>
       <form id="ff"><label>Email<input name="email" type="email" autocomplete="email" required></label><div id="e"></div><button class="primary" style="width:100%">Send reset link</button></form>
-      <p class="muted small"><a href="#" id="back">Back to log in</a></p></div>` : `<div class="card auth"><h1>${reg ? "Create your account" : "Welcome back"}</h1>
+      <p class="muted small"><a href="#" id="back">Back to log in</a></p></div>` : `<div class="card auth"><h1>${reg ? "Create your account" : "Sign in"}</h1>
       <div class="tabs"><button class="${!reg ? "on" : ""}" data-m="login">Log in</button><button class="${reg ? "on" : ""}" data-m="register">Sign up</button></div>
       <form id="f" novalidate>
       ${reg ? `<label>Display name<input name="username" maxlength="20" autocomplete="nickname" placeholder="3 to 20 letters or numbers" required></label><label>Email<input name="email" type="email" autocomplete="email" required></label>`
@@ -66,7 +71,7 @@ function resetView(token) {
   wirePw(app);
   $("#rf").onsubmit = async (e) => { e.preventDefault(); try { await api("/api/reset", "POST", { token, password: e.target.password.value }); history.replaceState(null, "", "/"); toast("Password changed. You are logged in."); await boot(); } catch (er) { $("#e").innerHTML = `<div class="err">${esc(er.message)}</div>`; } };
 }
-function signedOut() { if (typeof stopStage === "function") stopStage(); S.user = null; S.view = null; $("#nav").innerHTML = ""; $("#who").innerHTML = ""; authView(); }
+function signedOut() { document.body.classList.remove("signin"); if (typeof stopStage === "function") stopStage(); S.user = null; S.view = null; $("#nav").innerHTML = ""; $("#who").innerHTML = ""; authView(); }
 async function logout() { await api("/api/logout", "POST"); signedOut(); }
 
 function profileDialog() {
@@ -138,13 +143,13 @@ async function mountGoogle() {
 
 // ------------------------------------------------------------------ AI coach card
 function coachCard(c) {
-  if (!c || c.answers < 5) return `<div class="glass" id="coach">${sh("01", "AI coach")}<p class="muted">Answer about 10 questions and the coach will study your habits: speed, guessing, hints, forgetting and weak spots.</p></div>`;
+  if (!c || c.answers < 5) return `<section class="panel" id="coach">${sh(1, "Study coach")}<p class="muted">Answer about 10 questions and the coach will study your habits: speed, guessing, hints, forgetting and weak spots.</p></section>`;
   const bd = c.byDifficulty ? Object.entries(c.byDifficulty).map(([d, v]) => `<div class="cbar"><span>${["", "Easy", "Medium", "Hard"][d] || d}</span><div class="bar ${tone(v.accuracy / 100)}"><i style="width:${v.accuracy}%"></i></div><b>${v.accuracy}%</b></div>`).join("") : "";
   const steps = c.ai ? c.ai.advice : c.plan;
-  return `<div class="glass" id="coach">${sh("01", "AI coach")}<div style="margin-bottom:8px"><span class="styletag">${c.ai ? "AI plan" : c.aiPending ? "AI is thinking..." : "analysis"}</span></div>
+  return `<section class="panel" id="coach"><div class="ph"><h2>Study coach</h2><span class="badge">${c.ai ? "AI plan" : c.aiPending ? "Preparing AI plan" : "Analysis"}</span></div>
     ${c.ai ? `<p><b>${esc(c.ai.headline)}</b></p>` : ""}<h3>Accuracy by difficulty</h3>${bd}
     ${c.findings.length ? "<h3>What I noticed</h3><ul class='ul'>" + c.findings.map((f) => `<li>${esc(f.text)}</li>`).join("") + "</ul>" : ""}
-    <h3>Your next steps</h3><ul class="ul">${steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>`;
+    <h3>Your next steps</h3><ul class="ul">${steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></section>`;
 }
 
 // ------------------------------------------------------------------ dashboard
@@ -152,155 +157,134 @@ async function load() {
   [S.rm, S.games, S.coach, S.hero] = await Promise.all([api("/api/roadmap"), api("/api/games"), api("/api/coach").catch(() => null), api("/api/hero").catch(() => null)]);
 }
 
-// ------------------------------------------------------------------ the hub: a clean arena x learning-platform dashboard
+// ------------------------------------------------------------------ the hub: product dashboard (12-column grid, neutral data, accent only for actions)
 const VIEWS = [["arena", "Arena"], ["quests", "Quests"], ["arc", "Arc Search"], ["armory", "Armory"], ["progress", "Progress"]];
-let sfxCtx = null, lastBlip = 0;
-function blip(f = 520, d = 0.04, v = 0.02) { const n = performance.now(); if (n - lastBlip < 60) return; lastBlip = n; try { sfxCtx = sfxCtx || new (window.AudioContext || window.webkitAudioContext)(); const o = sfxCtx.createOscillator(), g = sfxCtx.createGain(); o.type = "sine"; o.frequency.value = f; g.gain.value = v; o.connect(g); g.connect(sfxCtx.destination); o.start(); g.gain.exponentialRampToValueAtTime(0.0001, sfxCtx.currentTime + d); o.stop(sfxCtx.currentTime + d); } catch (e) {} }
-document.addEventListener("click", (e) => { if (e.target.closest && e.target.closest(".gbtn,#nav button,.qgame > button,.tn")) blip(660, 0.05); });
 function stopStage() { document.body.classList.remove("hub"); }
-const sh = (n, t) => `<div class="sh"><i>${n}</i>${t}</div>`;
+const sh = (n, t) => `<div class="ph"><h2>${t}</h2></div>`;
+const STATUS = { done: ["Cleared", "done"], mastered: ["Mastered", "done"], review: ["Review", "warn"], current: ["In progress", "active"], locked: ["Locked", ""] };
+const badge = (st) => `<span class="badge ${STATUS[st] ? STATUS[st][1] : ""}">${STATUS[st] ? STATUS[st][0] : esc(st)}</span>`;
 
 function shell() {
   const u = S.user, st = S.rm.stats;
   $("#nav").innerHTML = VIEWS.map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? "on" : ""}">${l}</button>`).join("");
   $("#nav").querySelectorAll("button").forEach((b) => (b.onclick = () => go(b.dataset.v)));
-  $("#who").innerHTML = `<span class="pill cy hide-sm" title="Knowledge shards"><i>&#9670;</i>${S.hero ? S.hero.shards : 0}</span><span class="pill hide-sm"><i>LV</i>${st.level}</span>
+  $("#who").innerHTML = `<div class="hstat"><span>Level</span><b>${st.level}</b></div><div class="hstat"><span>Shards</span><b>${S.hero ? S.hero.shards : 0}</b></div>
     <button class="userbtn" id="prof" title="Profile and settings"><span class="avatar">${esc((u.username[0] || "?").toUpperCase())}</span>${esc(u.username)}</button><button class="iconbtn2" id="out">Log out</button>`;
   $("#prof").onclick = profileDialog; $("#out").onclick = logout;
 }
 function go(v) {
   if (!VIEW_FN[v]) v = "arena";
   S.view = v; shell();
-  const view = $("#view"); if (!view) return; view.className = "view"; view.innerHTML = VIEW_FN[v](); void view.offsetWidth; AFTER[v] && AFTER[v](); scrollTo(0, 0);
+  const view = $("#view"); if (!view) return; view.className = "view"; view.innerHTML = VIEW_FN[v](); AFTER[v] && AFTER[v](); scrollTo(0, 0);
 }
 function dash() {
   document.body.classList.add("hub"); app.innerHTML = '<div id="view" class="view"></div>'; S.view = S.view && VIEW_FN[S.view] ? S.view : "arena";
   go(S.view);
-  if (S.user.admin) { const d = document.createElement("div"); d.id = "adminbox"; d.style.marginTop = "20px"; app.appendChild(d); adminInbox(); }
+  if (S.user.admin) { const d = document.createElement("div"); d.id = "adminbox"; d.style.marginTop = "24px"; app.appendChild(d); adminInbox(); }
 }
 function uploadBlock(title, first) {
-  return `<div class="glass accent" id="upcard"><div class="lbl">${first ? "<b>FIRST QUEST</b>" : "NEW QUEST"}</div><h2 style="margin:8px 0 4px">${title}</h2><p class="muted small" id="note"></p>
-    <label class="drop" id="drop"><input type="file" id="file" hidden accept=".pdf,.docx,.pptx,.txt,.md,.html,.htm,.csv,.png,.jpg,.jpeg,.webp"><b id="dropt">Drop a file here or click to choose</b><span class="muted small">PDF, DOCX, PPTX, TXT, MD, HTML or an image &middot; up to 25 MB</span></label>
-    <label>Or paste your notes<textarea id="paste" rows="3" placeholder="Paste at least a few paragraphs"></textarea></label><div id="msg"></div>
-    <div class="acts"><button class="gbtn hero" id="go">Create my game</button></div>
-    <p class="muted small" style="margin:12px 0 0">Your material is read by AI services to build the game, so avoid confidential files. <a href="/privacy.html">Privacy</a></p></div>`;
+  return `<section class="panel" id="upcard"><div class="ph"><div><h2>${title}</h2><p id="note"></p></div></div>
+    <label class="drop" id="drop"><input type="file" id="file" hidden accept=".pdf,.docx,.pptx,.txt,.md,.html,.htm,.csv,.png,.jpg,.jpeg,.webp"><b id="dropt">Drop a file here, or click to browse</b><span class="muted small">PDF, DOCX, PPTX, TXT, MD, HTML or an image, up to 25 MB</span></label>
+    <label>Or paste notes<textarea id="paste" rows="4" placeholder="Paste at least a few paragraphs"></textarea></label><div id="msg"></div>
+    <div class="acts" style="margin-top:4px"><button class="gbtn hero" id="go">${first ? "Create your first game" : "Create game"}</button><span class="muted small">Text is processed by AI services; avoid confidential files. <a href="/privacy.html">Privacy</a></span></div></section>`;
 }
 
-// ---- pieces
+// ---- arena pieces
 const curGame = () => { const gs = S.rm.games; if (!gs.length) return null; S.sel = Math.min(S.sel ?? Math.max(0, gs.findIndex((g) => g.nodes.some((n) => n.status === "current"))), gs.length - 1); return gs[S.sel]; };
 const gamePct = (g) => Math.round(100 * g.nodes.filter((n) => ["done", "mastered", "review"].includes(n.status)).length / g.nodes.length);
-function playerCard() {
-  const st = S.rm.stats, u = S.user, off = 220 * (1 - st.xpInLevel / 500);
-  return `<div class="glass player"><div class="ring"><svg viewBox="0 0 78 78"><circle class="t" cx="39" cy="39" r="35"/><circle class="a" cx="39" cy="39" r="35" stroke-dasharray="220" stroke-dashoffset="${off}"/></svg><b>${st.level}</b><small>LEVEL</small></div>
-    <div class="meta"><div class="row1"><h1>${esc(u.username)}</h1><span class="muted small">${st.xpInLevel} / 500 XP to level ${st.level + 1}</span></div>
-      <div class="bar2" style="margin-top:10px"><i style="width:${Math.round(st.xpInLevel / 5)}%"></i></div>
-      <div class="tags"><span class="pill"><i>&#10003;</i>${st.accuracy == null ? "no answers yet" : st.accuracy + "% accuracy"}</span><span class="pill"><i>&#9889;</i>best streak ${st.bestStreak}</span><span class="pill"><i>&#9673;</i>${st.topics} topics</span><span class="pill cy"><i>&#9670;</i>${S.hero ? S.hero.shards : 0} shards</span></div></div></div>`;
+const pctOrDash = (m) => (m == null ? "&ndash;" : Math.round(m * 100) + "%");
+function profileCard() {
+  const st = S.rm.stats, u = S.user;
+  return `<section class="panel"><div class="pf"><div class="pf-av">${esc((u.username[0] || "?").toUpperCase())}</div>
+      <div><div class="pf-name">${esc(u.username)}</div><div class="pf-sub">Level ${st.level} &middot; ${st.gamesFinished} game${st.gamesFinished === 1 ? "" : "s"} cleared</div></div>
+      <div class="pf-xp"><div class="row-sb"><span>Progress to level ${st.level + 1}</span><span class="num">${st.xpInLevel} / 500 XP</span></div><div class="meter"><i style="width:${Math.round(st.xpInLevel / 5)}%"></i></div></div></div>
+    <div class="statgrid" style="margin-top:20px"><div><span>Accuracy</span><b>${st.accuracy == null ? "&ndash;" : st.accuracy + "%"}</b></div><div><span>Best streak</span><b>${st.bestStreak}</b></div><div><span>Topics tracked</span><b>${st.topics}</b></div><div><span>Avg. answer time</span><b>${st.pace == null ? "&ndash;" : st.pace + "s"}</b></div></div></section>`;
 }
 function questLog() {
   const gs = S.rm.games;
-  if (!gs.length) return `<div class="glass"><div class="ch"><div class="lbl">Quest log</div></div><div class="empty">No quests yet. Upload your notes to start one.</div><div class="acts"><button class="gbtn" data-go="quests">+ New quest</button></div></div>`;
-  const icon = { done: "&#10003;", mastered: "&#9733;", review: "!", current: "&#9654;", locked: "&#8226;" };
-  return `<div class="glass"><div class="ch"><div class="lbl">Quest log</div><button class="gbtn sm" data-go="quests">+ New</button></div>
-    ${gs.map((g, gi) => `<div class="qgame ${gi === S.sel ? "on" : ""}"><button data-sel="${gi}"><span>${esc(g.title)}</span><span class="pct">${gamePct(g)}%</span><span class="bar2"><i style="width:${gamePct(g)}%"></i></span></button>
-      ${gi === S.sel ? `<ul class="qch">${g.nodes.map((n, ni) => `<li class="${n.status}" data-node="${ni}"><span class="st">${icon[n.status] || ""}</span><span>${esc(n.title)}</span><em>${n.mastery == null ? "" : pct(n.mastery)}</em></li>`).join("")}</ul>` : ""}</div>`).join("")}</div>`;
+  const head = `<div class="ph"><h2>Quests</h2><button class="gbtn sm" data-go="quests">New quest</button></div>`;
+  if (!gs.length) return `<section class="panel">${head}<div class="empty">No quests yet. Upload your notes to start one.</div></section>`;
+  return `<section class="panel">${head}<div class="qlist">${gs.map((g, gi) => `<div class="qgame ${gi === S.sel ? "on" : ""}"><button data-sel="${gi}"><span>${esc(g.title)}</span><span class="pct num">${gamePct(g)}%</span><span class="bar2"><i style="width:${gamePct(g)}%"></i></span></button>
+      ${gi === S.sel ? `<ul class="qch">${g.nodes.map((n, ni) => `<li class="${n.status}" data-node="${ni}"><span class="st num">${n.final ? "Final" : String(ni + 1).padStart(2, "0")}</span><span>${esc(n.title)}</span>${badge(n.status)}</li>`).join("")}</ul>` : ""}</div>`).join("")}</div></section>`;
 }
-function skillTree(g) {
-  const nodes = g.nodes, W = Math.max(560, nodes.length * 230), colW = W / nodes.length, y0 = 64, y1 = 200, yc = 300, dy = 66, maxC = 4;
-  const tall = Math.min(maxC, Math.max(1, ...nodes.filter((n) => !n.final).map((n) => n.concepts.length))), more = nodes.some((n) => !n.final && n.concepts.length > maxC);
-  const H = yc + (tall - 1) * dy + (more ? 92 : 70);
-  const cx = (i) => colW * i + colW / 2, short = (t, n) => (t.length > n ? t.slice(0, n - 1) + "…" : t);
-  let lines = "", nodesSvg = "";
-  nodes.forEach((n, i) => {
-    const x = cx(i), lit = ["done", "mastered", "review", "current"].includes(n.status);
-    lines += `<path class="tl ${lit ? "lit" : ""}" d="M${W / 2} ${y0 + 26}C${W / 2} ${y0 + 90} ${x} ${y1 - 90} ${x} ${y1 - 30}"/>`;
-    if (i < nodes.length - 1) lines += `<path class="tl path ${["done", "mastered", "review"].includes(n.status) ? "lit" : ""}" d="M${x + 32} ${y1}L${cx(i + 1) - 32} ${y1}"/>`;
-    const cs = n.final ? [] : n.concepts.slice(0, maxC);
-    cs.forEach((c, k) => {
-      const yy = yc + k * dy; lines += `<path class="tl ${c.mastery != null && c.mastery >= 0.45 ? "lit" : ""}" d="M${x} ${(k ? yy - dy : y1) + (k ? 16 : 30)}L${x} ${yy - 16}"/>`;
-      const m = c.mastery == null ? 0 : c.mastery >= 0.75 ? 3 : c.mastery >= 0.45 ? 2 : 1;
-      nodesSvg += `<g class="tn cn m${m} ${n.status === "locked" ? "lock" : ""}" data-node="${i}" data-c="${k}" transform="translate(${x} ${yy})"><circle class="core" r="14"/><text y="34">${esc(short(c.name, 22))}</text></g>`;
-    });
-    if (!n.final && n.concepts.length > maxC) nodesSvg += `<text x="${x}" y="${yc + (maxC - 1) * dy + 62}" fill="#8b949e" font-size="13" text-anchor="middle">+${n.concepts.length - maxC} more</text>`;
-    const sym = n.final ? "&#9733;" : String(i + 1);
-    nodesSvg += `<g class="tn ${n.status} ${S.node === i ? "sel" : ""}" data-node="${i}" transform="translate(${x} ${y1})">${n.status === "current" ? '<circle class="pulse" r="30"/>' : ""}<circle class="core" r="30"/><text class="ico" y="6">${sym}</text><text y="54">${esc(short(n.title, 24))}</text></g>`;
-  });
-  const root = `<g class="tn root" transform="translate(${W / 2} ${y0})"><rect class="core" x="-${Math.min(170, W / 2 - 20)}" y="-26" width="${Math.min(340, W - 40)}" height="52" rx="14"/><text y="6">${esc(short(g.title.toUpperCase(), 26))}</text></g>`;
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Skill tree for ${esc(g.title)}"><defs><filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>${lines}${root}${nodesSvg}</svg>`;
+function bracket(g) {
+  return `<div class="bracket">${g.nodes.map((n, i) => {
+    const topics = n.final ? [] : n.concepts.slice(0, 4);
+    return `<div class="stage ${n.status} ${S.node === i ? "sel" : ""}" data-node="${i}"><div class="st-head"><span class="st-no">${n.final ? "Final" : "Stage " + (i + 1)}</span>${badge(n.status)}</div>
+      <div class="st-title">${esc(n.title)}</div>
+      <ul class="st-topics">${n.final ? `<li><span class="dot"></span><span>Boss exam on every chapter</span><span></span></li>` : topics.map((c) => `<li><span class="dot m${c.mastery == null ? 0 : c.mastery >= 0.75 ? 3 : c.mastery >= 0.45 ? 2 : 1}"></span><span>${esc(c.name)}</span><span class="num">${pctOrDash(c.mastery)}</span></li>`).join("")}${!n.final && n.concepts.length > 4 ? `<li><span></span><span class="muted">+${n.concepts.length - 4} more</span><span></span></li>` : ""}</ul>
+      <div class="st-foot"><span>Mastery</span><span class="num">${pctOrDash(n.mastery)}</span></div></div>`;
+  }).join("")}</div>`;
 }
-function nodeCard(g, i, ci) {
+function nodeCard(g, i) {
   const n = g.nodes[i]; if (!n) return "";
-  if (ci != null && n.concepts[ci]) {
-    const c = n.concepts[ci];
-    return `<div class="nodecard"><div class="lbl">Skill &middot; ${esc(n.title)}</div><h2>${esc(c.name)}</h2>
-      <div class="cbar"><span>Mastery</span><div class="bar ${tone(c.mastery)}"><i style="width:${Math.round((c.mastery || 0) * 100)}%"></i></div><b>${pct(c.mastery)}</b></div>
-      <p class="muted small">${c.mastery == null ? "Not tested yet." : c.mastery >= 0.75 ? "Mastered. Nice work." : c.mastery >= 0.45 ? "Getting there. A replay will lock it in." : "Weak spot. ARCANA adds practice for it."}</p>
-      <div class="acts"><button class="gbtn" data-ask="${esc("Explain " + c.name + " simply with an example")}">Ask Arc to explain</button>${n.status !== "locked" ? `<a class="gbtn" href="/play.html?game=${encodeURIComponent(g.id)}&ch=${n.index}">Practise this chapter</a>` : ""}</div></div>`;
-  }
-  const say = { done: "Completed.", mastered: "Completed and mastered.", review: "Completed, but mastery is low here: worth a replay.", current: "This is your next quest.", locked: "Finish the earlier chapters to unlock it." }[n.status];
-  return `<div class="nodecard"><div class="lbl">${n.final ? "Final boss" : "Chapter " + (i + 1)}</div><h2>${esc(n.title)}</h2><p class="muted">${n.goal ? esc(n.goal.replace(/[.!?]*$/, ".")) + " " : ""}${say}</p>
-    ${n.concepts.slice(0, 6).map((c) => `<div class="cbar"><span>${esc(c.name)}</span><div class="bar ${tone(c.mastery)}"><i style="width:${Math.round((c.mastery || 0) * 100)}%"></i></div><b>${pct(c.mastery)}</b></div>`).join("")}
-    <div class="acts">${n.status === "locked" ? "" : `<a class="gbtn hero" href="/play.html?game=${encodeURIComponent(g.id)}${n.status === "current" ? "" : "&ch=" + n.index}">${n.status === "current" ? "Enter the arena" : "Replay"}</a>`}</div></div>`;
+  const say = { done: "Cleared.", mastered: "Cleared and mastered.", review: "Cleared, but mastery is low. A replay will help.", current: "This is your current stage.", locked: "Clear the earlier stages to unlock it." }[n.status];
+  return `<div class="nodecard"><div class="ph" style="margin-bottom:8px"><div><h2>${esc(n.title)}</h2><p>${n.goal ? esc(n.goal.replace(/[.!?]*$/, ".")) + " " : ""}${say}</p></div>${badge(n.status)}</div>
+    ${n.concepts.slice(0, 8).map((c, k) => `<div class="cbar"><span>${esc(c.name)}</span><div class="bar ${tone(c.mastery)}"><i style="width:${Math.round((c.mastery || 0) * 100)}%"></i></div><b class="num">${pctOrDash(c.mastery)}</b></div>`).join("")}
+    <div class="acts">${n.status === "locked" ? "" : `<a class="gbtn ${n.status === "current" ? "hero" : ""}" href="/play.html?game=${encodeURIComponent(g.id)}${n.status === "current" ? "" : "&ch=" + n.index}">${n.status === "current" ? "Continue" : "Replay stage"}</a>`}
+      ${n.concepts.length ? `<button class="gbtn" data-ask="${esc("Explain the key ideas of " + n.title + " simply, with an example: " + n.concepts.map((c) => c.name).join(", "))}">Ask Arc about this stage</button>` : ""}</div></div>`;
 }
 function leaderboard() {
   const lb = S.lb;
-  if (!lb) return `<div class="glass"><div class="ch"><div class="lbl">Leaderboard</div></div><p class="muted small">Loading ranks...</p></div>`;
-  return `<div class="glass"><div class="ch"><div class="lbl">Global <b>leaderboard</b></div><span class="muted small">${lb.players} players</span></div>
-    ${lb.top.length ? `<ol class="lb">${lb.top.map((r) => `<li class="${r.me ? "me" : ""}"><span class="rk">${r.rank}</span><span class="av">${esc(r.name[0].toUpperCase())}</span><span class="nm">${esc(r.name)}<small>LEVEL ${r.level}</small></span><span class="xp">${r.xp.toLocaleString()}</span></li>`).join("")}</ol>` : '<p class="muted small">Be the first on the board: answer questions and clear chapters to earn XP.</p>'}
-    <div class="lbme"><span>Your rank</span><b>${lb.me.rank ? "#" + lb.me.rank : "unranked"} &middot; ${lb.me.xp.toLocaleString()} XP</b></div></div>`;
+  if (!lb) return `<section class="panel"><div class="ph"><h2>Leaderboard</h2></div><p class="muted small">Loading...</p></section>`;
+  return `<section class="panel"><div class="ph"><div><h2>Leaderboard</h2><p>Global &middot; ${lb.players} ranked players</p></div></div>
+    ${lb.top.length ? `<table class="tbl"><thead><tr><th>#</th><th>Player</th><th class="r">Lvl</th><th class="r">XP</th></tr></thead><tbody>${lb.top.map((r) => `<tr class="${r.me ? "me" : ""}"><td class="rk num">${r.rank}</td><td class="nm">${esc(r.name)}${r.me ? ' <span class="muted">(you)</span>' : ""}</td><td class="r num">${r.level}</td><td class="r num">${r.xp.toLocaleString()}</td></tr>`).join("")}</tbody></table>`
+      : '<p class="muted small">No ranked players yet. Answer questions and clear stages to earn XP.</p>'}
+    <div class="tblfoot"><span>Your rank</span><span class="num">${lb.me.rank ? "#" + lb.me.rank : "Unranked"} &middot; ${lb.me.xp.toLocaleString()} XP</span></div></section>`;
 }
 function nextUp() {
   const next = S.rm.next;
-  return `<div class="glass"><div class="ch"><div class="lbl">Next up</div></div><div class="nextlist">${next.length ? next.slice(0, 4).map((n) => `<div class="nx"><span><span class="k">${esc(n.kind.toUpperCase())}</span>${esc(n.text)}</span>${n.game ? `<a class="gbtn sm" href="/play.html?game=${encodeURIComponent(n.game)}">Go</a>` : '<button class="gbtn sm" data-go="quests">Upload</button>'}</div>`).join("") : '<div class="muted small">Nothing queued. Upload new material.</div>'}</div></div>`;
+  return `<section class="panel"><div class="ph"><h2>Recommended</h2></div><div class="nextlist">${next.length ? next.slice(0, 4).map((n) => `<div class="nx"><span><span class="k">${esc(n.kind)}</span>${esc(n.text)}</span>${n.game ? `<a class="gbtn sm" href="/play.html?game=${encodeURIComponent(n.game)}">Open</a>` : '<button class="gbtn sm" data-go="quests">Upload</button>'}</div>`).join("") : '<p class="muted small" style="margin:0">Nothing queued. Upload new material to continue.</p>'}</div></section>`;
 }
 function adaptCard() {
   const ad = S.rm.adaptation, dots = [1, 2, 3, 4, 5].map((i) => `<i class="${i <= ad.difficulty ? "on" : ""}"></i>`).join("");
-  return `<div class="glass"><div class="ch"><div class="lbl">Your setup</div><span class="styletag ${esc(ad.style)}">${esc(ad.style)}</span></div><div class="muted small">Difficulty ${ad.difficulty}/5 &middot; ${ad.maxHearts} hearts</div><div class="pips">${dots}</div><p class="small" style="margin:0">${esc(ad.why)}</p></div>`;
+  return `<section class="panel"><div class="ph"><h2>Difficulty</h2><span class="styletag">${esc(ad.style)}</span></div><div class="row-sb" style="display:flex;justify-content:space-between;font-size:12px;color:var(--t2)"><span>Level ${ad.difficulty} of 5</span><span>${ad.maxHearts} hearts</span></div><div class="pips">${dots}</div><p class="muted small" style="margin:0">${esc(ad.why)}</p></section>`;
 }
 
 const VIEW_FN = {
   arena() {
     const g = curGame();
-    const center = g ? `<div class="glass arena"><div class="top ch" style="margin:0"><div class="lbl">Skill tree &middot; <b>${esc(g.title)}</b></div><span class="muted small">${gamePct(g)}% complete</span></div>
-        <div class="holo"><div class="scan"></div>${skillTree(g)}</div>
-        <div class="legend2"><span><i style="background:#00ff00"></i>Mastered</span><span><i style="background:rgba(0,255,0,.35)"></i>Learning</span><span><i style="background:#ffb020"></i>Weak spot</span><span><i style="background:#2a3038"></i>Not tested yet</span></div>
-        <div id="nodebox">${S.node != null ? nodeCard(g, S.node, S.cnode) : ""}</div>
-        ${(() => { const cur = g.nodes.find((n) => n.status === "current"); return `<div class="cta"><div class="next"><span>${g.finished ? "Completed" : "Next quest"}</span><b>${esc(cur ? cur.title : "All chapters cleared")}</b></div><a class="gbtn hero" href="/play.html?game=${encodeURIComponent(g.id)}">${g.finished ? "Play again" : "Enter the arena"}</a></div>`; })()}</div>`
-      : uploadBlock("Turn your notes into a game", true);
-    return `<div class="arena-grid"><div class="stack">${questLog()}${adaptCard()}</div><div class="stack">${playerCard()}${center}</div><div class="stack">${leaderboard()}${nextUp()}</div></div>`;
+    const center = g ? `<section class="panel"><div class="ph"><div><h2>${esc(g.title)}</h2><p>Season path &middot; ${gamePct(g)}% complete</p></div>${(() => { const cur = g.nodes.find((n) => n.status === "current"); return `<a class="gbtn hero" href="/play.html?game=${encodeURIComponent(g.id)}">${g.finished ? "Play again" : cur ? "Continue: " + esc(cur.title.length > 22 ? cur.title.slice(0, 21) + "…" : cur.title) : "Start"}</a>`; })()}</div>
+        ${bracket(g)}<div class="legend3"><span><i class="dot m3"></i>Mastered</span><span><i class="dot m2"></i>Learning</span><span><i class="dot m1"></i>Weak</span><span><i class="dot"></i>Not tested</span></div>
+        <div id="nodebox">${S.node != null ? nodeCard(g, S.node) : ""}</div></section>`
+      : uploadBlock("Create your first game", true);
+    return `<div class="pagehead"><div><h1>Welcome back, ${esc(S.user.username)}</h1><p>Pick up where you left off, or start a new quest from your notes.</p></div></div>
+      <div class="grid12"><div class="c3 side stack order-b">${questLog()}${adaptCard()}</div><div class="c6 stack order-a">${profileCard()}${center}</div><div class="c3 side stack order-c">${leaderboard()}${nextUp()}</div></div>`;
   },
   quests() {
-    const rows = S.games.map((g) => `<div class="rowi"><div class="cap">${g.progress && g.progress.finished ? "&#10003;" : "&#9654;"}</div><div><h3>${esc(g.title)}</h3><p>${g.progress ? (g.progress.finished ? "Finished" : "Chapter " + (g.progress.chapter + 1)) + " &middot; " + g.progress.score + " pts" : "New"}</p></div>
+    const rows = S.games.map((g) => `<div class="rowi"><div class="cap">${esc((g.title[0] || "?").toUpperCase())}</div><div><h3>${esc(g.title)}</h3><p>${g.progress ? (g.progress.finished ? "Finished" : "Stage " + (g.progress.chapter + 1)) + " &middot; " + g.progress.score + " pts" : "Not started"}</p></div>
       <div class="acts" style="margin:0"><a class="gbtn sm" href="/play.html?game=${encodeURIComponent(g.id)}">${g.progress && !g.progress.finished ? "Continue" : "Play"}</a>${g.hasSource ? `<button class="gbtn sm" data-rebuild="${esc(g.id)}" title="Make a new version with the new lessons, tablets and fewer questions">Rebuild</button>` : ""}<button class="gbtn sm danger" data-del="${esc(g.id)}">Delete</button></div></div>`).join("");
-    return `<div class="two">${uploadBlock("Make a game from your notes", false)}<div class="glass"><div class="ch"><div class="lbl">Your quests</div><span class="muted small">${S.games.length}</span></div><div class="rows">${rows || '<div class="empty">No quests yet.</div>'}</div></div></div>`;
+    return `<div class="pagehead"><div><h1>Quests</h1><p>Every file you upload becomes its own game.</p></div></div>
+      <div class="grid12"><div class="c5">${uploadBlock("New quest", false)}</div><div class="c7"><section class="panel"><div class="ph"><h2>Your quests</h2><span class="muted small num">${S.games.length} total</span></div><div class="rows">${rows || '<div class="empty">No quests yet.</div>'}</div></section></div></div>`;
   },
   arc() {
     const gs = S.games;
     S.arcGame = S.arcGame && gs.some((g) => g.id === S.arcGame) ? S.arcGame : "";
-    return `<div class="glass" style="margin-bottom:16px"><div class="ch" style="margin-bottom:8px"><div class="lbl"><b>Arc Search</b> &middot; your AI study assistant</div></div><p class="muted small" style="margin:0 0 12px">Ask anything. Arc checks live sources for facts that change, and when you pick a game it also uses the notes you uploaded.</p>
-      <div class="gtabs" style="margin:0"><button data-ag="" class="${S.arcGame ? "" : "on"}">General</button>${gs.map((g) => `<button data-ag="${esc(g.id)}" class="${S.arcGame === g.id ? "on" : ""}">${esc(g.title.slice(0, 28))}</button>`).join("")}</div></div><div id="arcbox"></div>`;
+    return `<div class="pagehead"><div><h1>Arc Search</h1><p>Ask anything. Arc checks live sources for facts that change, and uses your notes when you pick a game.</p></div></div>
+      <div class="gtabs"><button data-ag="" class="${S.arcGame ? "" : "on"}">General</button>${gs.map((g) => `<button data-ag="${esc(g.id)}" class="${S.arcGame === g.id ? "on" : ""}">${esc(g.title.slice(0, 28))}</button>`).join("")}</div><div id="arcbox"></div>`;
   },
   armory() {
-    const h = S.hero; if (!h) return `<div class="empty">Loading your hero...</div>`;
-    const abil = h.abilities.map((a) => `<div class="rowi ${a.unlocked ? "" : "locked"}"><div class="cap">${esc(a.key)}</div><div><h3>${esc(a.name)}</h3><p>${esc(a.desc)}</p></div><div class="tagx ${a.unlocked ? "" : "lock"}">${a.unlocked ? (a.cost ? a.cost + " EN" : "READY") : "LV " + a.unlock}</div></div>`).join("");
-    const ench = h.enchants.map((e) => `<div class="rowi eq ${e.equipped ? "on" : ""} ${e.unlocked ? "" : "locked"}" data-ench="${esc(e.id)}"><div class="cap">${e.equipped ? "&#10003;" : "&#9671;"}</div><div><h3>${esc(e.name)}</h3><p>${esc(e.desc)}</p></div><div class="tagx ${e.unlocked ? "" : "lock"}">${e.unlocked ? (e.equipped ? "ON" : "EQUIP") : "LV " + e.unlock}</div></div>`).join("");
-    const ups = h.upgrades.map((u) => `<div class="upgrade"><div><h3>${esc(u.name)} <span class="tagx">LV ${u.level}/${u.max}</span></h3><p>${esc(u.desc)}</p><div class="pips">${Array.from({ length: u.max }, (_, i) => `<i class="${i < u.level ? "on" : ""}"></i>`).join("")}</div></div>${u.cost == null ? '<span class="tagx">MAX</span>' : `<button class="gbtn sm" data-up="${esc(u.id)}" ${h.shards < u.cost ? "disabled" : ""}>&#9670; ${u.cost}</button>`}</div>`).join("");
-    return `<div class="glass accent" style="margin-bottom:20px"><div class="ch"><div class="lbl">Armory</div></div><div class="shardbig">${h.shards}<small>KNOWLEDGE SHARDS</small></div><p class="muted small" style="margin:6px 0 0">Every enemy you defeat drops a shard that teaches a fact from your notes. Spend shards on enhancements; powers and enchantments unlock as your level rises.</p></div>
-      <div class="three"><div class="glass">${sh("01", "Powers")}<div class="rows">${abil}</div></div><div class="glass">${sh("02", `Enchantments ${h.equipped.length}/${h.slots}`)}<div class="rows">${ench}</div></div><div class="glass">${sh("03", "Enhancements")}<div class="rows">${ups}</div></div></div>`;
+    const h = S.hero; if (!h) return `<div class="empty">Loading...</div>`;
+    const abil = h.abilities.map((a) => `<div class="rowi ${a.unlocked ? "" : "locked"}"><div class="cap">${esc(a.key)}</div><div><h3>${esc(a.name)}</h3><p>${esc(a.desc)}</p></div><span class="tagx ${a.unlocked ? "" : "lock"}">${a.unlocked ? (a.cost ? a.cost + " energy" : "Ready") : "Level " + a.unlock}</span></div>`).join("");
+    const ench = h.enchants.map((e) => `<div class="rowi eq ${e.equipped ? "on" : ""} ${e.unlocked ? "" : "locked"}" data-ench="${esc(e.id)}"><div class="cap">${esc(e.name[0])}</div><div><h3>${esc(e.name)}</h3><p>${esc(e.desc)}</p></div>${e.unlocked ? `<span class="badge ${e.equipped ? "active" : ""}">${e.equipped ? "Equipped" : "Equip"}</span>` : `<span class="tagx lock">Level ${e.unlock}</span>`}</div>`).join("");
+    const ups = h.upgrades.map((u) => `<div class="upgrade"><div><h3>${esc(u.name)} <span class="muted small num">${u.level}/${u.max}</span></h3><p>${esc(u.desc)}</p><div class="pips">${Array.from({ length: u.max }, (_, i) => `<i class="${i < u.level ? "on" : ""}"></i>`).join("")}</div></div>${u.cost == null ? '<span class="tagx">Max</span>' : `<button class="gbtn sm" data-up="${esc(u.id)}" ${h.shards < u.cost ? "disabled" : ""}>${u.cost} shards</button>`}</div>`).join("");
+    return `<div class="pagehead"><div><h1>Armory</h1><p>Earn shards by defeating enemies in ambushes; each one teaches a fact from your notes.</p></div><div class="shardbig num">${h.shards}<small>shards</small></div></div>
+      <div class="grid12"><div class="c4"><section class="panel">${sh(1, "Powers")}<div class="rows">${abil}</div></section></div><div class="c4"><section class="panel">${sh(2, `Enchantments &middot; ${h.equipped.length}/${h.slots} equipped`)}<div class="rows">${ench}</div></section></div><div class="c4"><section class="panel">${sh(3, "Enhancements")}<div class="rows">${ups}</div></section></div></div>`;
   },
   progress() {
     const st = S.rm.stats, ach = S.rm.achievements;
-    return `<div class="glass" style="margin-bottom:20px"><div class="ch"><div class="lbl">Performance</div></div><div class="kv"><div><b>${st.accuracy == null ? "-" : st.accuracy + "%"}</b><span>Accuracy</span></div><div><b>${st.answers}</b><span>Answers</span></div><div><b>${st.pace == null ? "-" : st.pace + "s"}</b><span>Pace</span></div><div><b>${st.bestStreak}</b><span>Best streak</span></div><div><b>${st.topics}</b><span>Topics</span></div><div><b>${st.gamesFinished}</b><span>Games cleared</span></div></div></div>
-      <div class="two"><div class="stack">${coachCard(S.coach)}${adaptCard()}</div><div class="stack"><div class="glass">${sh("02", "Weak and strong topics")}<h3 style="margin-top:0">Needs work</h3><div class="chips">${st.weak.length ? st.weak.map((t) => `<span class="chip weak">${esc(t.name)} ${pct(t.mastery)}</span>`).join("") : '<span class="muted small">None yet.</span>'}</div><h3>Strong</h3><div class="chips">${st.strong.length ? st.strong.map((t) => `<span class="chip strong">${esc(t.name)} ${pct(t.mastery)}</span>`).join("") : '<span class="muted small">Keep playing to build mastery.</span>'}</div></div>
-      <div class="glass">${sh("03", "Achievements")}<div class="ach">${ach.map((a) => `<span class="a ${a.earned ? "on" : ""}">${a.earned ? "&#9733; " : ""}${esc(a.name)}</span>`).join("")}</div></div></div></div>`;
+    return `<div class="pagehead"><div><h1>Progress</h1><p>How you are learning, and what ARCANA is adjusting for you.</p></div></div>
+      <div class="kv" style="margin-bottom:24px"><div><span>Accuracy</span><b>${st.accuracy == null ? "&ndash;" : st.accuracy + "%"}</b></div><div><span>Answers</span><b>${st.answers}</b></div><div><span>Avg. answer time</span><b>${st.pace == null ? "&ndash;" : st.pace + "s"}</b></div><div><span>Best streak</span><b>${st.bestStreak}</b></div><div><span>Topics tracked</span><b>${st.topics}</b></div><div><span>Games cleared</span><b>${st.gamesFinished}</b></div></div>
+      <div class="grid12"><div class="c7 stack">${coachCard(S.coach)}</div><div class="c5 stack">${adaptCard()}<section class="panel">${sh(2, "Topics")}<h3 style="margin-top:0">Needs work</h3><div class="chips">${st.weak.length ? st.weak.map((t) => `<span class="chip weak">${esc(t.name)} &middot; ${pct(t.mastery)}</span>`).join("") : '<span class="muted small">None yet.</span>'}</div><h3>Strong</h3><div class="chips">${st.strong.length ? st.strong.map((t) => `<span class="chip strong">${esc(t.name)} &middot; ${pct(t.mastery)}</span>`).join("") : '<span class="muted small">Keep playing to build mastery.</span>'}</div></section>
+      <section class="panel">${sh(3, "Achievements")}<div class="ach">${ach.map((a) => `<span class="a ${a.earned ? "on" : ""}">${esc(a.name)}</span>`).join("")}</div></section></div></div>`;
   },
 };
 const AFTER = {
   arena() {
     document.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => go(b.dataset.go)));
     document.querySelectorAll("[data-sel]").forEach((b) => (b.onclick = () => { S.sel = +b.dataset.sel; S.node = null; go("arena"); }));
-    const pickNode = (i, c) => { const g = curGame(); S.node = i; S.cnode = c; const box = $("#nodebox"); if (box) { box.innerHTML = nodeCard(g, i, c); box.scrollIntoView({ behavior: "smooth", block: "nearest" }); wireAsk(); } document.querySelectorAll(".tn").forEach((t) => t.classList.toggle("sel", +t.dataset.node === i && t.dataset.c == null && c == null)); };
-    document.querySelectorAll(".tn[data-node]").forEach((t) => (t.onclick = () => { const i = +t.dataset.node, n = curGame().nodes[i]; if (n.status === "locked" && t.dataset.c == null) return toast("Finish the earlier chapters to unlock this one"); pickNode(i, t.dataset.c == null ? null : +t.dataset.c); }));
-    document.querySelectorAll(".qch li[data-node]").forEach((li) => (li.onclick = () => { if (li.classList.contains("locked")) return; pickNode(+li.dataset.node, null); }));
+    const pick = (i) => { const g = curGame(), n = g.nodes[i]; if (n.status === "locked") return toast("Clear the earlier stages to unlock this one"); S.node = i; const box = $("#nodebox"); if (box) { box.innerHTML = nodeCard(g, i); box.scrollIntoView({ behavior: "smooth", block: "nearest" }); wireAsk(); } document.querySelectorAll(".stage").forEach((t) => t.classList.toggle("sel", +t.dataset.node === i)); };
+    document.querySelectorAll(".stage[data-node], .qch li[data-node]").forEach((el) => (el.onclick = () => pick(+el.dataset.node)));
     if ($("#upcard")) wireUpload();
     wireAsk();
     if (!S.lb) api("/api/leaderboard").then((lb) => { S.lb = lb; if (S.view === "arena") go("arena"); }).catch(() => {});
@@ -310,7 +294,7 @@ const AFTER = {
       if (!confirm("Build a new version of this game with the new lessons and knowledge tablets? Your current game stays as it is.")) return;
       b.disabled = true;
       try {
-        const job = await api("/api/games/" + b.dataset.rebuild + "/rebuild", "POST", {}); toast("Rebuilding: it appears in your quests when it is ready (a few minutes).");
+        const job = await api("/api/games/" + b.dataset.rebuild + "/rebuild", "POST", {}); toast("Rebuilding. The new version appears here when it is ready.");
         const tick = async () => { const j = await api("/api/jobs/" + job.id).catch(() => null); if (!j) return; if (j.status === "done") { toast("New version ready: " + (j.title || "")); refresh(); } else if (j.status === "error") toast(j.error); else setTimeout(tick, 4000); };
         tick();
       } catch (e) { toast(e.message); b.disabled = false; }
@@ -366,7 +350,7 @@ function wireRoad() {
 // ------------------------------------------------------------------ upload
 function wireUpload() {
   let file = null;
-  api("/api/status").then((s) => { $("#note").textContent = s.llm ? `AI is on (${s.model}). If one service is busy, the next one takes over.` : "No AI key is set on this server, so a simpler offline game will be made."; }).catch(() => {});
+  api("/api/status").then((s) => { $("#note").textContent = s.llm ? "Usually ready in 2 to 5 minutes. Chapter 1 opens as soon as it is built." : "AI is offline right now, so a simpler game will be built from your text."; }).catch(() => {});
   const setFile = (f) => { file = f; $("#dropt").textContent = f ? `${f.name} (${Math.round(f.size / 1024)} KB)` : "Click to choose a file, or drop it here"; };
   $("#file").onchange = (e) => setFile(e.target.files[0] || null);
   const drop = $("#drop"); drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); }; drop.ondragleave = () => drop.classList.remove("over");
@@ -403,7 +387,7 @@ async function adminInbox() {
 }
 
 async function refresh() {
-  S.lb = null; await load(); dash();
+  document.body.classList.remove("signin"); S.lb = null; await load(); dash();
   if (S.coach && S.coach.aiPending) setTimeout(async () => { try { S.coach = await api("/api/coach"); const el = $("#coach"); if (el && S.coach.ai) el.outerHTML = coachCard(S.coach); } catch (e) {} }, 20000);
 }
 async function boot() {

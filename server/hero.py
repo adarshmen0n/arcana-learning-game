@@ -7,8 +7,8 @@ import db
 import roadmap
 
 ABILITIES = [
-    {"id": "strike", "name": "Strike", "key": "J", "unlock": 1, "cost": 0, "desc": "Fast punch combo. Chain three hits for a finisher."},
-    {"id": "kick", "name": "Heavy kick", "key": "K", "unlock": 1, "cost": 0, "desc": "Slower, harder, knocks enemies back."},
+    {"id": "strike", "name": "Strike", "key": "J", "unlock": 1, "cost": 0, "desc": "Four-hit chain; the fourth hit launches the enemy for an air combo."},
+    {"id": "kick", "name": "Heavy kick", "key": "K", "unlock": 1, "cost": 0, "desc": "Tap to kick. Hold to charge a guard breaker that smashes shields."},
     {"id": "bolt", "name": "Arcane Bolt", "key": "1", "unlock": 2, "cost": 20, "desc": "Fire a bolt of energy across the arena."},
     {"id": "shock", "name": "Shockwave", "key": "2", "unlock": 4, "cost": 35, "desc": "Slam the ground: damages and stuns everything near you."},
     {"id": "surge", "name": "Overcharge", "key": "3", "unlock": 6, "cost": 55, "desc": "For 6 seconds your hits do 60% more damage and you take less."},

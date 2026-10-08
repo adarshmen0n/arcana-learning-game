@@ -33,15 +33,18 @@ const Combat = (() => {
     }
     const seen = new Set(), uniq = facts.filter((f) => !seen.has(f.text) && seen.add(f.text));
     for (let i = uniq.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [uniq[i], uniq[j]] = [uniq[j], uniq[i]]; }
-    const d = (adapt && adapt.difficulty) || 3, cidx = G.chapterIdx || 0, n = Math.max(2, (index === 0 ? 3 : 4) + (d >= 4 ? 1 : 0) - (d <= 2 ? 1 : 0));
-    const kinds = index === 0 ? (cidx < 1 ? ["brute", "brute", "brute", "brute"] : ["brute", "guardian", "brute", "caster"]) : ["brute", "caster", "guardian", "dasher", "brute", "caster"];
+    // waves: an ambush is 2 waves, an elite fight 3 waves and a champion. Difficulty follows the student's mastery, so it stays winnable.
+    const d = (adapt && adapt.difficulty) || 3, cidx = G.chapterIdx || 0, first = cidx < 1 && index === 0, adj = (d >= 4 ? 1 : 0) - (d <= 2 ? 1 : 0);
+    const sizes = (index === 0 ? (first ? [2, 3] : [3, 4]) : [3, 4, 4]).map((n) => Math.max(2, n + adj));
+    const kinds = first ? ["brute"] : index === 0 ? ["brute", "caster", "brute", "guardian", "dasher"] : ["brute", "caster", "guardian", "dasher", "brute", "dasher", "caster"];
     const suffix = { brute: ["Thrall", "Revenant"], caster: ["Wraith", "Shade"], dasher: ["Stalker", "Blade"], guardian: ["Sentinel", "Bulwark"] };
-    const enemies = Array.from({ length: n }, (_, i) => {
-      const f = uniq[i % Math.max(1, uniq.length)] || { concept: "Knowledge", text: "Keep learning: every fact you collect makes the next fight easier." };
-      const k = kinds[i % kinds.length];
-      return { kind: k, name: (f.concept.split(" ").slice(0, 2).join(" ") + " " + suffix[k][(i + index) % 2]).toUpperCase(), fact: f };
-    });
-    return { title: index === 0 ? "Ambush" : "Elite ambush", enemies };
+    const STOP = new Set(["of", "the", "and", "in", "to", "a", "an", "for", "on", "with", "by", "is"]);
+    const two = (c) => { const w = c.split(/\s+/).slice(0, 3); while (w.length > 1 && (w.length > 2 || STOP.has(w[w.length - 1].toLowerCase()))) w.pop(); return w.join(" "); };   // "Products of X" -> "Products"
+    const fact = (i) => uniq[i % Math.max(1, uniq.length)] || { concept: "Knowledge", text: "Keep learning: every fact you collect makes the next fight easier." };
+    const enemies = []; let i = 0;
+    sizes.forEach((n, w) => { for (let j = 0; j < n; j++, i++) { const f = fact(i), k = kinds[(i + w) % kinds.length]; enemies.push({ kind: k, wave: w, name: (two(f.concept) + " " + suffix[k][(i + index) % 2]).toUpperCase(), fact: f }); } });
+    if (index > 0) { const f = fact(i); enemies.push({ kind: d >= 3 ? "guardian" : "brute", wave: sizes.length - 1, champion: true, name: (two(f.concept) + " Warlord").toUpperCase(), fact: { ...f, big: true } }); }
+    return { title: index === 0 ? "Ambush" : "Elite ambush", waves: sizes.length, enemies };
   }
 
   // ------------------------------------------------------------------ HUD
@@ -53,7 +56,7 @@ const Combat = (() => {
     if (built) return; built = true;
     const el = document.createElement("div"); el.id = "cb"; el.className = "hidden";
     el.innerHTML = `<div class="cb-hero"><div class="cb-tag"><b id="cb-lv">LV 1</b><span id="cb-name">RANGER</span></div><div class="cb-bar hp"><i id="cb-hp"></i><b id="cb-hpt"></b></div><div class="cb-bar en"><i id="cb-en"></i></div></div>
-      <div class="cb-foes"><span>HOSTILES</span><b id="cb-left">0</b></div>
+      <div class="cb-foes"><span id="cb-wave">HOSTILES</span><b id="cb-left">0</b></div>
       <div class="cb-combo hidden" id="cb-combo"><b id="cb-cn">x1</b><span>COMBO</span></div>
       <div class="cb-meter"><i id="cb-mt"></i><span>KNOWLEDGE</span></div>
       <div class="cb-slots" id="cb-slots"></div><div id="fact" class="hidden"></div><div id="cb-moves"></div><div id="cb-call" class="hidden"></div>
@@ -74,7 +77,7 @@ const Combat = (() => {
   function hud() {
     const pct = (v, m) => Math.max(0, Math.min(100, (v / m) * 100));
     $("#cb-hp").style.width = pct(C.hp, C.maxHp) + "%"; $("#cb-hpt").textContent = Math.ceil(C.hp) + " / " + C.maxHp;
-    $("#cb-en").style.width = C.energy + "%"; $("#cb-mt").style.height = C.meter + "%"; $("#cb-left").textContent = C.enemies.filter((e) => e.state !== "dead").length + C.pending;
+    $("#cb-en").style.width = C.energy + "%"; $("#cb-mt").style.height = C.meter + "%"; $("#cb-left").textContent = C.enemies.filter((e) => e.state !== "dead").length + C.pending; $("#cb-wave").textContent = C.waves > 1 ? `WAVE ${C.wave + 1}/${C.waves}` : "HOSTILES";
     $("#cb-mt").parentElement.classList.toggle("full", C.meter >= 100);
     const cb = $("#cb-combo"); cb.classList.toggle("hidden", C.combo < 2); $("#cb-cn").textContent = "x" + C.combo;
     document.querySelectorAll("#cb-slots .slot").forEach((s) => {
@@ -109,27 +112,28 @@ const Combat = (() => {
   // ------------------------------------------------------------------ enemies
   const LOOK = { brute: "enforcer", caster: "overlord", dasher: "rival", guardian: "colossus" }, SCALE = { brute: 1.28, caster: 1.2, dasher: 1.18, guardian: 1.22 };
   function spawn(scene, spec, i, adapt) {
-    const d = (adapt && adapt.difficulty) || 3, sc = SCALE[spec.kind] || 1.25;
+    const d = (adapt && adapt.difficulty) || 3, sc = (SCALE[spec.kind] || 1.25) * (spec.champion ? 1.22 : 1);
     const rig = People.make(scene, LOOK[spec.kind] || "enforcer", sc); rig.guard = true;
-    const side = i % 2 ? -1 : 1, x = side > 0 ? C.AR + 120 + i * 60 : C.AL - 120 - i * 60;
+    const side = i % 2 ? -1 : 1, x = side > 0 ? C.AR + 120 + (i % 3) * 70 : C.AL - 120 - (i % 3) * 70;
     rig.root.setPosition(x, GROUND + 6).setDepth(10);
-    const label = scene.add.text(0, -(170 * sc) - 26, spec.name, { fontFamily: '"Orbitron", sans-serif', fontSize: "12px", color: spec.kind === "guardian" ? "#ffb347" : "#ff8da1", stroke: "#000", strokeThickness: 4 }).setOrigin(0.5);
+    const label = scene.add.text(0, -(170 * sc) - 26, spec.name, { fontFamily: '"Orbitron", sans-serif', fontSize: "12px", color: spec.champion ? "#ffd36a" : spec.kind === "guardian" ? "#ffb347" : "#ff8da1", stroke: "#000", strokeThickness: 4 }).setOrigin(0.5);
     const tip = scene.add.text(0, -(170 * sc) - 52, "", { fontFamily: '"Orbitron", sans-serif', fontSize: "14px", fontStyle: "900", color: "#ffd36a", stroke: "#000", strokeThickness: 5 }).setOrigin(0.5);
     const bar = scene.add.graphics(), ui = scene.add.container(x, GROUND + 6).setDepth(12); ui.add([label, bar, tip]);
     const base = { brute: 10, caster: 9, dasher: 13, guardian: 18 }[spec.kind] || 10, cidx = G.chapterIdx || 0;
     const e = { spec, kind: spec.kind, rig, sc, x, vx: 0, ay: 0, avy: 0, avx: 0, label, bar, tip, ui, state: "spawn", t: 0, cool: rnd(0.8, 1.8), tint: false, hit: false, hits: 0, hitT: 0, block: 0, broken: 0,
       speed: ({ caster: 120, guardian: 78 }[spec.kind] || 105) * (0.85 + 0.07 * d), dmg: base * (0.7 + 0.15 * d) * (1 + 0.05 * cidx),
       wind: spec.kind === "guardian" ? Math.max(0.6, 1.0 - 0.06 * d) : Math.max(0.32, 0.72 - 0.06 * d) };
-    e.maxHp = e.hp = Math.round(({ caster: 55, guardian: 130 }[spec.kind] || 80) * (0.8 + 0.12 * d) * (1 + 0.1 * cidx));
+    e.maxHp = e.hp = Math.round(({ caster: 55, guardian: 130 }[spec.kind] || 80) * (0.8 + 0.12 * d) * (1 + 0.1 * cidx) * (spec.champion ? 2.4 : 1));
+    if (spec.champion) { e.dmg *= 1.25; e.wind *= 0.9; e.champion = true; rig.all.forEach((im) => im.setTint(0xffe2b0)); }
     return e;
   }
   function drawBar(e) {
-    const w = 74, y = -(170 * e.sc) - 8 - e.ay;
+    const w = e.champion ? 120 : 74, y = -(170 * e.sc) - 8 - e.ay;
     e.bar.clear().fillStyle(0x000000, 0.7).fillRect(-w / 2, y, w, 6).fillStyle(e.broken > 0 ? 0xffd36a : 0xff3b5c, 1).fillRect(-w / 2 + 1, y + 1, (w - 2) * Math.max(0, e.hp / e.maxHp), 4);
     if (e.kind === "guardian" && e.broken <= 0 && e.state !== "dead") e.bar.lineStyle(2, 0xffb347, 1).strokeRect(-w / 2 - 2, y - 2, w + 4, 10);
     e.label.y = -(170 * e.sc) - 26 - e.ay; e.tip.y = -(170 * e.sc) - 52 - e.ay;
   }
-  function setTint(e, on, col = 0xff7070) { e.rig.all.forEach((i) => (on ? i.setTint(col) : i.clearTint())); }
+  function setTint(e, on, col = 0xff7070) { e.rig.all.forEach((i) => (on ? i.setTint(col) : e.champion ? i.setTint(0xffe2b0) : i.clearTint())); }
   const canExecute = (e) => e.state !== "dead" && e.hp <= e.maxHp * 0.35 && ["stagger", "down", "getup"].includes(e.state);
   const guarding = (e, scene) => e.state !== "dead" && e.broken <= 0 && ((e.kind === "guardian" && ["approach", "windup"].includes(e.state)) || e.block > 0) && (scene.hx - e.x) * (e.dir || Math.sign(scene.hx - e.x)) > 0;
 
@@ -417,7 +421,12 @@ const Combat = (() => {
     if (scene.hy >= GROUND) { const was = !scene.onGround; scene.hy = GROUND; scene.vy = 0; scene.onGround = true; if (was) landed(scene); }
     scene.hx = Phaser.Math.Clamp(scene.hx + scene.vx * dt, C.AL + 40, C.AR - 40);
     for (const e of C.enemies) updateEnemy(scene, e, dt, time); C.enemies = C.enemies.filter((e) => !(e.gone && (e.rig.root.destroy(), e.ui.destroy(), true)));
-    if (C.pending > 0) { C.spawnT -= dt; if (C.spawnT <= 0) { C.pending--; C.spawnT = 2.2; C.enemies.push(spawn(scene, C.queue.shift(), C.spawned++, C.adapt)); } }
+    if (C.pending > 0) {
+      const nx = C.queue[0], live = alive().length;
+      if ((nx.wave || 0) > C.wave) {
+        if (live === 0 && C.orbs.length === 0) { C.wave = nx.wave; C.spawnT = 2.4; C.hp = Math.min(C.maxHp, C.hp + C.maxHp * 0.2); C.energy = Math.min(100, C.energy + 30); call(C.queue.some((q) => q.champion && q.wave === C.wave) ? `FINAL WAVE ${C.wave + 1}/${C.waves}` : `WAVE ${C.wave + 1}/${C.waves}`, "gold"); Sound.boss(); }
+      } else if (live < C.maxActive) { C.spawnT -= dt; if (C.spawnT <= 0) { C.pending--; C.spawnT = nx.champion ? 0.5 : 1.5; const e = spawn(scene, C.queue.shift(), C.spawned++, C.adapt); C.enemies.push(e); if (e.champion) { call("CHAMPION: " + e.spec.name, "gold"); scene.cameras.main.shake(260, 0.006); } } }
+    }
     updateProj(scene, dt); updateOrbs(scene, dt); hud();
     if (!C.over && C.pending === 0 && alive().length === 0 && C.orbs.length === 0) { C.over = "won"; }
     if (C.over && !C.resolved) { C.resolved = true; setTimeout(() => C && C.resolve(C.over), C.over === "won" ? 900 : 1200); if (C.over === "lost") { Sound.wrong(); h.play("ko"); } else { Sound.win(); h.play("victory"); } }
@@ -435,7 +444,7 @@ const Combat = (() => {
       const cx = ent.x, d = (adapt && adapt.difficulty) || 3;
       C = { L, adapt, AL: cx - 560, AR: cx + 560, enemies: [], proj: [], orbs: [], cd: {}, t: 0, busy: false, busyUntil: 0, chain: 0, chainT: 0, combo: 0, comboT: 0, maxCombo: 0, energy: 60, meter: G.meter || 0, buff: 0, invuln: 0,
         guarding: false, dodging: false, attackers: 0, hard: d >= 3, guardAt: -9, dodgeAt: -9, kAt: null, kWas: false, sWas: false, air: 0, airChain: 0, tech: new Set(), showMoves: (G.fights || 0) < 3,
-        maxHp: Math.round(100 * L.mult.health), kills: 0, shards: 0, learned: [], over: null, resolved: false, queue: enc.enemies.slice(), pending: enc.enemies.length, spawned: 0, spawnT: 0.4, resolve };
+        maxHp: Math.round(100 * L.mult.health), kills: 0, shards: 0, learned: [], over: null, resolved: false, queue: enc.enemies.slice(), pending: enc.enemies.length, spawned: 0, spawnT: 0.4, wave: 0, waves: enc.waves || 1, maxActive: d <= 2 ? 2 : 3, resolve };
       C.hp = C.maxHp;
       scene.combat = Combat; scene.fighting = true; scene.fightMid = cx; scene.hero.guard = true; scene.hx = Math.min(scene.hx, cx - 200);
       $("#cb-lv").textContent = "LV " + L.level; $("#cb-name").textContent = (G.name || "RANGER").toUpperCase(); buildSlots(L); $("#cb").classList.remove("hidden");

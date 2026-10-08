@@ -46,7 +46,7 @@ class World extends Phaser.Scene {
     this.limitX = 1e9; this.active = null; this.exitX = 1e9; this.interactCb = null; this.exitCb = null; this.burstTint = NEON_HEX;
     const kb = this.input.keyboard; this.k = kb.addKeys("W,A,S,D,UP,LEFT,RIGHT,SPACE,SHIFT,E,ENTER"); kb.addCapture("SPACE,UP,DOWN,LEFT,RIGHT");
     this.shadow = this.add.ellipse(0, GROUND + 4, 96, 16, 0x000000, 0.5).setDepth(11);
-    Art.buildTheme(this, "neon_grid"); People.props(this); this.heroes = { m: People.make(this, "hero_m", 1.32), f: People.make(this, "hero_f", 1.32) }; this.hero = this.heroes.m; this.focus = null; Object.values(this.heroes).forEach((h) => h.root.setDepth(12)); this.tscale = 1; this.frozen = false; this.fighting = false; this.fightMid = null;
+    Art.buildTheme(this, "neon_grid"); People.props(this); People.dress(G.hero && G.hero.look); this.heroes = { m: People.make(this, "hero_m", 1.32), f: People.make(this, "hero_f", 1.32) }; this.hero = this.heroes.m; this.focus = null; Object.values(this.heroes).forEach((h) => h.root.setDepth(12)); this.tscale = 1; this.frozen = false; this.fighting = false; this.fightMid = null;
     this.burstE = this.add.particles(0, 0, "spark", { lifespan: 650, speed: { min: 90, max: 300 }, scale: { start: 0.55, end: 0 }, alpha: { start: 1, end: 0 }, blendMode: "ADD", gravityY: 160, emitting: false, tint: { onEmit: () => this.burstTint } }).setDepth(16);
     Chars.props(this); this.makePrompt();
     if (this.renderer.type === Phaser.WEBGL) { const fx = this.cameras.main.postFX; fx.addVignette(0.5, 0.5, 0.92, 0.3); fx.addBloom(0xffffff, 1, 1, 1.0, 0.75, 4); }
@@ -141,10 +141,10 @@ class World extends Phaser.Scene {
     } else if (s.type === "level_test") {
       const sw = add(this.add.image(0, -150, "swirl").setBlendMode(Phaser.BlendModes.ADD).setScale(0.62)); add(this.add.image(0, 0, "door_frame").setOrigin(0.5, 1).setScale(1.05));
       e.verb = s.practice ? "Practice session" : "Enter trial"; e.top = 380; e.stopX = x - 140; e.sw = sw; e.upd = (dt) => { sw.rotation += dt * 1.2; };
-    } else if (s.type === "maze" || s.type === "shooter") {
+    } else if (ARCADE_INFO[s.type]) {
       const cab = add(this.add.image(0, 0, "cabinet").setOrigin(0.5, 1).setScale(0.64)), gl = add(this.add.image(0, -210, "spark").setBlendMode(Phaser.BlendModes.ADD).setTint(NEON_HEX).setScale(3.2).setAlpha(0.35));
-      e.verb = s.type === "maze" ? "Play Maze Run" : "Play Invaders"; e.top = 400; e.stopX = x - 140; e.upd = (dt, t) => gl.setAlpha(0.28 + 0.14 * Math.sin(t * 0.005));
-      add(this.label(root, (s.title || (s.type === "maze" ? "MAZE RUN" : "INVADERS")).toUpperCase(), -345));
+      e.verb = "Play " + ARCADE_INFO[s.type].name; e.top = 400; e.stopX = x - 140; e.upd = (dt, t) => gl.setAlpha(0.28 + 0.14 * Math.sin(t * 0.005));
+      add(this.label(root, (s.title || ARCADE_INFO[s.type].name).toUpperCase(), -345));
     } else {
       const kind = s.boss.kind || "enforcer", sc = { enforcer: 1.5, colossus: 1.75, overlord: 1.9 }[kind] || 1.3, rig = People.make(this, kind, sc);
       rig.root.setScale(-sc, sc); add(rig.root); rig.guard = true; e.rig = rig; e.heavy = kind === "colossus"; e.sc = sc;
@@ -270,7 +270,7 @@ class World extends Phaser.Scene {
 }
 
 // ---- gameplay helpers ----
-const NEXT = { tablet: (s) => "Read: " + s.tablet.title, npc: (s) => (s.role === "recap" ? "Recap with " : "Learn from ") + s.npc.name, obstacle: () => "Break the seal", match: (s) => "Challenge " + s.opponent.name, mission: () => "Complete the mission", maze: () => "Play Maze Run", shooter: () => "Play Invaders", combat: () => "Survive the ambush", level_test: (s) => (s.practice ? "Practise your weak topics" : "Pass the trial"), mini_boss: (s) => "Defeat " + s.boss.name, final_boss: (s) => "Defeat " + s.boss.name };
+const NEXT = { tablet: (s) => "Read: " + s.tablet.title, npc: (s) => (s.role === "recap" ? "Recap with " : "Learn from ") + s.npc.name, obstacle: () => "Break the seal", match: (s) => "Challenge " + s.opponent.name, mission: () => "Complete the mission", maze: () => "Play Maze Run", shooter: () => "Play Invaders", snake: () => "Play Snake Trail", hill: () => "Play Hill Climb Rally", combat: () => "Survive the ambush", level_test: (s) => (s.practice ? "Practise your weak topics" : "Pass the trial"), mini_boss: (s) => "Defeat " + s.boss.name, final_boss: (s) => "Defeat " + s.boss.name };
 function refreshHud() {
   const ch = G.ch || { scenes: [] }, done = G.done || 0, nx = ch.scenes[done];
   UI.hud({ title: ch.title || "", hp: G.hp, maxHp: G.maxHp, score: G.score, done, total: G.total, types: ch.scenes.map((s) => s.type), next: done >= ch.scenes.length ? "Head to the portal" : nx ? NEXT[nx.type](nx) : "", streak: G.streak || 0 });
@@ -360,9 +360,15 @@ async function playCombat(scene, ent) {
   const tech = res.techniques.length ? `<p class="muted">Techniques used: ${res.techniques.map((t) => `<span class="techchip">${UI.esc(t)}</span>`).join(" ")}</p>` : "";
   await UI.card(`<div class="kicker">Area cleared</div><div class="gradebig g${res.grade}">${res.grade}</div><h1>+${res.shards} knowledge shards</h1>${tech}<p class="muted">Best combo x${res.maxCombo}${bonus ? ` &middot; grade bonus +${bonus}` : ""}. What you learned${res.learned.length > 4 ? " (all of it is saved in Arc Search, My notes)" : ""}:</p><ul class="facts">${facts}</ul>`, "Continue");
 }
+const ARCADE_INFO = {
+  maze: { name: "Maze Run", sub: "Reach the terminal with the right answer. Dodge the sentries." },
+  shooter: { name: "Invaders", sub: "Shoot the block with the right answer. Dodge the return fire." },
+  snake: { name: "Snake Trail", sub: "Steer the snake into the right answer to grow. Wrong answers shrink you; walls and your own tail hurt." },
+  hill: { name: "Hill Climb Rally", sub: "Drive through the gate with the right answer. Hit the ramp fast to jump over the wrong ones. Land on your wheels and watch your fuel." },
+};
 async function playArcade(scene, ent) {
-  const s = ent.s, key = s.type, maze = key === "maze";
-  await UI.chapterCard({ kicker: "Arcade level", title: s.title || (maze ? "Maze Run" : "Invaders"), sub: maze ? "Reach the terminal with the right answer. Dodge the sentries." : "Shoot the block with the right answer. Dodge the return fire." });
+  const s = ent.s, key = s.type, info = ARCADE_INFO[key];
+  await UI.chapterCard({ kicker: "Arcade level", title: s.title || info.name, sub: info.sub });
   Sound.setMood("volcano"); UI.hideHud();
   await new Promise((res) => {
     const data = { questions: s.questions, seed: (G.chapterIdx + 1) * 5 + 3, ghosts: s.ghosts || 2, maxHp: G.maxHp, getScore: () => G.score, getHp: () => G.hp,
@@ -386,7 +392,7 @@ async function runScene(scene, ch, ent, s) {
   else if (s.type === "match") await playMatch(scene, ent);
   else if (s.type === "mission") await playMission(scene, ent);
   else if (s.type === "level_test") await playTest(scene, ent);
-  else if (s.type === "maze" || s.type === "shooter") await playArcade(scene, ent);
+  else if (ARCADE_INFO[s.type]) await playArcade(scene, ent);
   else if (s.type === "combat") await playCombat(scene, ent);
   else if (s.type === "mini_boss") await fightBoss(scene, ent, pickQs(questionsOf(ch), clamp(Math.min(s.count, 5) + A().bossCountDelta, 3, 7)), clamp(0.6 + A().bossRatioDelta, 0.4, 0.85), "Mini-boss");
   else if (s.type === "final_boss") await fightBoss(scene, ent, pickQs([...SCRIPT.chapters.flatMap(questionsOf), ...(SCRIPT.finalBoss.extraQuestions || [])], Math.min(s.count, 15)), clamp(s.passMarkRatio + A().bossRatioDelta, 0.5, 0.9), "Final boss");
@@ -521,6 +527,7 @@ if (matchMedia("(pointer: coarse)").matches) {
 
 (async () => {
   try { await Promise.race([Promise.all([document.fonts.load('900 20px Orbitron'), document.fonts.load('700 20px Rajdhani')]), new Promise((r) => setTimeout(r, 2500))]); } catch (e) {}
-  const game = new Phaser.Game({ type: Phaser.AUTO, parent: "game", width: W, height: H, backgroundColor: "#000", scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [World, MazeScene, ShooterScene], render: { antialias: true } });
+  try { await Promise.race([loadHero(), new Promise((r) => setTimeout(r, 2500))]); } catch (e) {}   // the ranger's suit and trim
+  const game = new Phaser.Game({ type: Phaser.AUTO, parent: "game", width: W, height: H, backgroundColor: "#000", scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [World, MazeScene, ShooterScene, SnakeScene, HillScene], render: { antialias: true } });
   window.__arcana = { game, G, V };
 })();

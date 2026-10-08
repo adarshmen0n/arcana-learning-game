@@ -1,7 +1,7 @@
 // The hub's living background: a painted world scrolls slowly behind the menu while the student's ranger trains on a neon platform.
 const Lobby = (() => {
   const { W, H, GROUND } = Art;
-  let game = null, sc = null, want = { theme: "neon_grid", gender: "m" };
+  let game = null, sc = null, want = { theme: "neon_grid", gender: "m", look: null };
 
   class LobbyScene extends Phaser.Scene {
     constructor() { super("lobby"); }
@@ -32,7 +32,7 @@ const Lobby = (() => {
       const glow = add(this.add.image(this.heroX, GROUND + 6, "spark").setBlendMode(Phaser.BlendModes.ADD).setTint(0x39ff14).setScale(7, 1.4).setAlpha(0.25).setDepth(7)); this.tweens.add({ targets: glow, alpha: 0.5, duration: 1600, yoyo: true, repeat: -1, ease: "Sine.inOut" });
     }
     applyHero(gender) {
-      if (this.rig) this.rig.root.destroy();
+      if (this.rig) this.rig.root.destroy(); People.dress(want.look);
       this.rig = People.make(this, gender === "f" ? "hero_f" : "hero_m", 1.85); this.rig.guard = true; this.rig.root.setDepth(10);
     }
     async demo() {
@@ -58,9 +58,17 @@ const Lobby = (() => {
     if (game) { sc && (sc.applyHero(want.gender)); return; }
     game = new Phaser.Game({ type: Phaser.AUTO, parent, width: W, height: H, transparent: false, backgroundColor: "#020503", scale: { mode: Phaser.Scale.ENVELOP, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [LobbyScene], render: { antialias: true }, audio: { noAudio: true } });
   }
+  function celebrate() {                                   // level up / reward: burst of light and a victory pose
+    if (!sc || !sc.rig) return; const s = sc, x = s.heroX, y = GROUND - 120, col = Phaser.Display.Color.HexStringToColor(People.SPECS.hero_m.glow || "#39ff14").color;
+    const p = s.add.particles(0, 0, "spark", { lifespan: 1400, speed: { min: 120, max: 520 }, scale: { start: 0.9, end: 0 }, alpha: { start: 1, end: 0 }, blendMode: "ADD", tint: [col, 0xffffff, 0xffd36a], emitting: false }).setDepth(30);
+    p.explode(90, x, y); setTimeout(() => p.explode(60, x, y - 60), 250); setTimeout(() => p.destroy(), 2200);
+    const ring = s.add.circle(x, GROUND + 6, 30).setStrokeStyle(6, col, 1).setDepth(9); s.tweens.add({ targets: ring, scaleX: 9, scaleY: 1.6, alpha: 0, duration: 900, onComplete: () => ring.destroy() });
+    s.cameras.main.flash(250, 255, 255, 255); s.busy = true; s.rig.play("victory", {}); setTimeout(() => { if (s.rig) { s.rig.release && s.rig.release(); s.rig.recover && s.rig.recover(); } s.busy = false; }, 2200);
+  }
+  function setLook(look) { want.look = look; if (sc) sc.applyHero(want.gender); }
   function side(x) { if (sc) sc.targetX = x * W; }        // slide the hero left/right (0..1) so panels never cover them
   function setGender(g) { want.gender = g; if (sc) sc.applyHero(g); }
   function stop() { if (game) { game.destroy(true); game = null; sc = null; } }
-  return { start, side, setGender, stop, get ready() { return !!sc; }, get game() { return game; } };
+  return { start, side, setGender, setLook, celebrate, stop, get ready() { return !!sc; }, get game() { return game; } };
 })();
 window.Lobby = Lobby;

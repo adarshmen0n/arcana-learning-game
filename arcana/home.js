@@ -148,12 +148,101 @@ function coachCard(c) {
 }
 
 // ------------------------------------------------------------------ dashboard
+const TZ = () => new Date().getTimezoneOffset();
 async function load() {
-  [S.rm, S.games, S.coach, S.hero] = await Promise.all([api("/api/roadmap"), api("/api/games"), api("/api/coach").catch(() => null), api("/api/hero").catch(() => null)]);
+  [S.rm, S.games, S.coach, S.hero, S.rw] = await Promise.all([api("/api/roadmap"), api("/api/games"), api("/api/coach").catch(() => null), api("/api/hero").catch(() => null), api("/api/rewards?tz=" + TZ()).catch(() => null)]);
+}
+const rwPost = (path, body) => api(path, "POST", { ...body, tz: TZ() });
+
+// ------------------------------------------------------------------ lobby music: a slow synthwave pad + arpeggio, made live with WebAudio (no files)
+const Music = (() => {
+  let ac = null, out = null, timer = 0, step = 0, on = false;
+  const pref = () => { try { return localStorage.getItem("arcana_music") !== "off"; } catch (e) { return true; } };
+  const CH = [[57, 60, 64, 67], [53, 57, 60, 64], [55, 59, 62, 65], [52, 55, 59, 62]];   // Am7 Fmaj7 G7 Em7
+  const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  function note(m, t, len, type, vol, cut) {
+    const o = ac.createOscillator(), g = ac.createGain(), f = ac.createBiquadFilter(); o.type = type; o.frequency.value = hz(m); f.type = "lowpass"; f.frequency.value = cut;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.4, len * 0.3)); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    o.connect(f); f.connect(g); g.connect(out); o.start(t); o.stop(t + len + 0.05);
+  }
+  function tick() {
+    if (!on) return; const t = ac.currentTime + 0.05, bar = Math.floor(step / 16) % 4, ch = CH[bar], i = step % 16;
+    if (i === 0) { ch.forEach((m) => note(m - 12, t, 4.2, "sawtooth", 0.018, 900)); note(ch[0] - 24, t, 4.2, "triangle", 0.05, 400); }
+    if (i % 2 === 0) note(ch[(i / 2) % 4] + 12, t, 0.32, "square", 0.012, 2200 + 800 * Math.sin(step / 9));
+    if (i % 4 === 0) { const k = ac.createOscillator(), g = ac.createGain(); k.frequency.setValueAtTime(110, t); k.frequency.exponentialRampToValueAtTime(40, t + 0.18); g.gain.setValueAtTime(0.09, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22); k.connect(g); g.connect(out); k.start(t); k.stop(t + 0.25); }
+    step++; timer = setTimeout(tick, 268);
+  }
+  function start() {
+    if (on || !pref()) return; try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+    if (!out) { out = ac.createGain(); out.gain.value = 0.9; out.connect(ac.destination); }
+    ac.resume && ac.resume(); on = true; tick(); paint();
+  }
+  function stop() { on = false; clearTimeout(timer); paint(); }
+  function toggle() { const want = !on; try { localStorage.setItem("arcana_music", want ? "on" : "off"); } catch (e) {} want ? start() : stop(); }
+  function paint() { const b = $("#mus"); if (b) { b.classList.toggle("off", !on); b.title = on ? "Music on (click to mute)" : "Music off (click to play)"; } }
+  addEventListener("pointerdown", () => { if (document.body.classList.contains("hub")) start(); }, { once: false });
+  return { start, stop, toggle, paint, get on() { return on; } };
+})();
+
+// ------------------------------------------------------------------ reward moments: count-ups, level up, daily login reward
+function countUp(el, from, to, ms = 900) { if (!el) return; const t0 = performance.now(); const f = (n) => { const k = Math.min(1, (n - t0) / ms), e = 1 - Math.pow(1 - k, 3); el.textContent = Math.round(from + (to - from) * e).toLocaleString(); if (k < 1) requestAnimationFrame(f); }; requestAnimationFrame(f); }
+function rewardPop(title, big, sub, onDone) {
+  const d = document.createElement("div"); d.className = "rpop"; d.innerHTML = `<div class="rbox"><div class="rk">${title}</div><div class="rbig"><b id="rpn">0</b></div><p>${sub}</p><button class="gbtn hero" id="rpok"><span>Collect</span></button></div>`;
+  document.body.appendChild(d); requestAnimationFrame(() => d.classList.add("in")); countUp($("#rpn", d), 0, big, 1100); blip(660, 0.12, 0.04); setTimeout(() => blip(880, 0.15, 0.04), 160);
+  if (window.Lobby) Lobby.celebrate();
+  $("#rpok", d).onclick = () => { d.classList.remove("in"); setTimeout(() => d.remove(), 250); onDone && onDone(); };
+}
+function checkLevelUp() {
+  const st = S.rm.stats, key = "arcana_lv_" + (S.user.id || S.user.username); let was = 0, xp0 = st.xp;
+  try { was = +localStorage.getItem(key) || 0; xp0 = +localStorage.getItem(key + "_xp") || st.xp; localStorage.setItem(key, st.level); localStorage.setItem(key + "_xp", st.xp); } catch (e) {}
+  if (xp0 < st.xp) animXp(xp0, st.xp);
+  if (was && st.level > was) setTimeout(() => {
+    const d = document.createElement("div"); d.className = "lvup"; d.innerHTML = `<div class="lvk">LEVEL UP</div><div class="lvn">${st.level}</div><div class="lvs">New powers and enchantments may be ready in the Armory</div>`;
+    document.body.appendChild(d); blip(520, 0.2, 0.05); setTimeout(() => blip(780, 0.25, 0.05), 180); setTimeout(() => blip(1040, 0.35, 0.05), 360); if (window.Lobby) Lobby.celebrate();
+    setTimeout(() => { d.classList.add("out"); setTimeout(() => d.remove(), 500); }, 2600);
+  }, 900);
+}
+function animXp(from, to) { const el = $(".hudxp b"); if (!el) return; const t0 = performance.now(); el.classList.add("pump"); const f = (n) => { const k = Math.min(1, (n - t0) / 1200); el.textContent = "+" + Math.round((to - from) * (1 - Math.pow(1 - k, 3))) + " XP"; if (k < 1) requestAnimationFrame(f); else setTimeout(() => { el.classList.remove("pump"); el.textContent = "LV " + S.rm.stats.level; }, 900); }; requestAnimationFrame(f); }
+function dailyPop() {
+  const rw = S.rw; if (!rw || rw.claimedToday || S.dailyShown) return; S.dailyShown = true;
+  const next = rw.streak + 1, pos = ((next - 1) % 7) + 1;
+  const d = document.createElement("div"); d.className = "rpop"; d.innerHTML = `<div class="rbox daily"><div class="rk">DAILY LOGIN REWARD</div><h2><span class="flame lg"></span> Day ${next} streak</h2>
+    <div class="week">${rw.week.map((w) => `<div class="wd ${w.day < pos ? "got" : w.day === pos ? "now" : ""}"><small>DAY ${w.day}</small><b>&#9670; ${w.pay}</b>${w.day === 7 ? "<em>JACKPOT</em>" : ""}</div>`).join("")}</div>
+    <p class="muted">Come back every day to grow your streak. Miss a day and it resets.</p><button class="gbtn hero" id="claimd"><span>Claim &#9670; ${rw.dailyPay}</span></button></div>`;
+  document.body.appendChild(d); requestAnimationFrame(() => d.classList.add("in"));
+  $("#claimd", d).onclick = async () => {
+    try { const res = await rwPost("/api/rewards/claim", { kind: "daily" }); S.rw = res; if (S.hero) S.hero.shards = res.shards; d.remove(); rewardPop("STREAK DAY " + res.streak, res.paid, "Knowledge shards added. Spend them in the Armory.", () => go(S.view)); }
+    catch (e) { toast(e.message); d.remove(); }
+  };
+}
+function chalBlock() {
+  const rw = S.rw; if (!rw) return "";
+  return `<div class="plate">${sh("&#9889;", "DAILY CHALLENGES")}<div class="chal">${rw.challenges.map((c) => { const done = c.progress >= c.goal; return `<div class="ch ${c.claimed ? "claimed" : done ? "done" : ""}"><div class="ct"><span>${esc(c.text)}</span><b>${c.progress}/${c.goal}</b></div><div class="cbar2"><i style="width:${Math.round((c.progress / c.goal) * 100)}%"></i></div>${c.claimed ? '<em class="cpaid">CLAIMED</em>' : done ? `<button class="gbtn sm" data-chal="${esc(c.id)}"><span>Claim &#9670; ${c.pay}</span></button>` : `<em>&#9670; ${c.pay}</em>`}</div>`; }).join("")}</div>
+    <div class="streakline"><span class="flame"></span> ${rw.streak}-day streak &middot; best ${Math.max(rw.best, rw.streak)}</div></div>`;
+}
+function wireChal() {
+  document.querySelectorAll("[data-chal]").forEach((b) => (b.onclick = async () => {
+    try { const res = await rwPost("/api/rewards/claim", { kind: "challenge", id: b.dataset.chal }); S.rw = res; if (S.hero) S.hero.shards = res.shards; rewardPop("CHALLENGE COMPLETE", res.paid, "Shards earned by studying. Nice work.", () => go(S.view)); } catch (e) { toast(e.message); }
+  }));
+}
+const LOOKC = { suits: { neon: ["#1a2420", "#3e4c46"], crimson: ["#3a1218", "#5a2a30"], cobalt: ["#142238", "#2e4466"], violet: ["#2a1a3d", "#4a3566"], gold: ["#3a3018", "#8a7140"], arctic: ["#b9c4cc", "#e1e8ee"], obsidian: ["#0c0c10", "#24242c"], solar: ["#4a2410", "#a0522d"] },
+  trims: { neon: "#39ff14", ice: "#38bdf8", ember: "#ff8a1f", rose: "#ff3b5c", royal: "#ffd36a", plasma: "#c084fc", pure: "#f5f7fa" } };
+function lookBlock() {
+  const rw = S.rw; if (!rw) return "";
+  const card = (kind, it) => { const eq = rw.look[kind] === it.id, sw = kind === "suit" ? `<i class="sw" style="background:linear-gradient(135deg,${LOOKC.suits[it.id][1]},${LOOKC.suits[it.id][0]});box-shadow:inset 0 0 0 3px ${LOOKC.trims[rw.look.trim]}"></i>` : `<i class="sw" style="background:#0b0f0d;box-shadow:inset 0 0 0 4px ${LOOKC.trims[it.id]},0 0 14px ${LOOKC.trims[it.id]}"></i>`;
+    const act = eq ? '<em class="cpaid">EQUIPPED</em>' : it.owned ? `<button class="gbtn sm" data-look="equip:${kind}:${it.id}"><span>Equip</span></button>` : it.price != null ? `<button class="gbtn sm" data-look="buy:${kind}:${it.id}" ${rw.shards < it.price ? "disabled" : ""}><span>&#9670; ${it.price}</span></button>` : `<em>SEASON TIER ${it.tier}</em>`;
+    return `<div class="lk ${eq ? "on" : ""} ${it.owned ? "" : "locked"}">${sw}<b>${esc(it.name)}</b>${act}</div>`; };
+  return `<div class="plate">${sh("04", "RANGER LOOK")}<p class="muted small">Your suit and glow trim show in the lobby and in every game.</p><h3>Suits</h3><div class="looks">${rw.suits.map((x) => card("suit", x)).join("")}</div><h3>Glow trims</h3><div class="looks">${rw.trims.map((x) => card("trim", x)).join("")}</div></div>`;
+}
+function wireLook() {
+  document.querySelectorAll("[data-look]").forEach((b) => (b.onclick = async () => {
+    const [action, kind, id] = b.dataset.look.split(":");
+    try { S.rw = await rwPost("/api/rewards/cosmetic", { action, kind, id }); if (S.hero) S.hero.shards = S.rw.shards; if (window.Lobby) { Lobby.setLook(S.rw.look); if (action === "buy") Lobby.celebrate(); } toast(action === "buy" ? "Unlocked and equipped" : "Equipped"); go(S.view); } catch (e) { toast(e.message); }
+  }));
 }
 
 // ------------------------------------------------------------------ the hub: a game lobby over a living stage (your ranger trains in the current world)
-const VIEWS = [["hub", "LOBBY"], ["roadmap", "WORLD MAP"], ["quests", "QUESTS"], ["arc", "ARC SEARCH"], ["armory", "ARMORY"], ["progress", "PROGRESS"]];
+const VIEWS = [["hub", "LOBBY"], ["roadmap", "WORLD MAP"], ["quests", "QUESTS"], ["season", "SEASON"], ["arc", "ARC SEARCH"], ["armory", "ARMORY"], ["progress", "PROGRESS"]];
 let sfxCtx = null, lastBlip = 0;
 function blip(f = 520, d = 0.04, v = 0.025) { const n = performance.now(); if (n - lastBlip < 60) return; lastBlip = n; try { sfxCtx = sfxCtx || new (window.AudioContext || window.webkitAudioContext)(); const o = sfxCtx.createOscillator(), g = sfxCtx.createGain(); o.type = "square"; o.frequency.value = f; g.gain.value = v; o.connect(g); g.connect(sfxCtx.destination); o.start(); g.gain.exponentialRampToValueAtTime(0.0001, sfxCtx.currentTime + d); o.stop(sfxCtx.currentTime + d); } catch (e) {} }
 document.addEventListener("pointerover", (e) => { const t = e.target.closest && e.target.closest(".gbtn,#nav button,.rowi,.eq,.nx,.qm"); if (t && t !== document.__lastBlipEl) { document.__lastBlipEl = t; blip(760, 0.03, 0.012); } });
@@ -165,7 +254,7 @@ async function startStage() {
   const node = S.rm && S.rm.games.map((g) => g.nodes.find((n) => n.status === "current")).find(Boolean), theme = (node && node.theme && node.theme.background) || "neon_grid";
   try {
     if (!window.Lobby) { for (const src of ["https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js", "art-env.js", "art-people.js", "lobby.js"]) await loadScript(src); }
-    Lobby.start("stagebg", { theme, gender: S.user.gender });
+    Lobby.start("stagebg", { theme, gender: S.user.gender, look: S.rw && S.rw.look });
   } catch (e) { /* the lobby works without the animated stage */ }
 }
 function stopStage() { document.body.classList.remove("hub", "noheroview", "signin"); if (window.Lobby) Lobby.stop(); const d = $("#stagebg"); if (d) d.remove(); }
@@ -177,11 +266,12 @@ function bootScreen(on) {
 
 function shell() {
   const u = S.user, st = S.rm.stats;
-  $("#nav").innerHTML = VIEWS.map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? "on" : ""}">${l}</button>`).join("");
+  const SHORT = { roadmap: "MAP", arc: "ARC", progress: "STATS" };
+  $("#nav").innerHTML = VIEWS.map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? "on" : ""}" title="${l}"><span class="lf">${l}</span><span class="ls">${SHORT[k] || l}</span></button>`).join("");
   $("#nav").querySelectorAll("button").forEach((b) => (b.onclick = () => go(b.dataset.v)));
-  $("#who").innerHTML = `<div class="hudxp" title="${st.xpInLevel} / 500 XP"><b>LV ${st.level}</b><span><i style="width:${Math.round(st.xpInLevel / 5)}%"></i></span></div><span class="chipx" title="Knowledge shards">&#9670; ${S.hero ? S.hero.shards : 0}</span>
+  $("#who").innerHTML = `<div class="hudxp" title="${st.xpInLevel} / 500 XP"><b>LV ${st.level}</b><span><i style="width:${Math.round(st.xpInLevel / 5)}%"></i></span></div><span class="chipx" title="Knowledge shards">&#9670; ${S.hero ? S.hero.shards : 0}</span>${S.rw ? `<span class="chipx fl" title="Daily streak">${'<span class="flame"></span>'} ${S.rw.streak}</span>` : ""}<button class="mus ${Music.on ? "" : "off"}" id="mus" aria-label="Music"><i></i><i></i><i></i><i></i></button>
     <button class="gbtn sm" id="prof"><span>${esc(u.username)}</span></button><button class="gbtn sm danger" id="out"><span>Log out</span></button>`;
-  $("#prof").onclick = profileDialog; $("#out").onclick = logout;
+  $("#prof").onclick = profileDialog; $("#out").onclick = logout; $("#mus").onclick = (e) => { e.stopPropagation(); Music.toggle(); };
 }
 function go(v) {
   if (!VIEW_FN[v]) v = "hub";
@@ -196,7 +286,7 @@ function dash() {
 // keyboard shortcuts in the lobby, like a console menu
 document.addEventListener("keydown", (e) => {
   if (!document.body.classList.contains("hub") || (e.target.closest && e.target.closest("input,textarea,dialog"))) return;
-  const keys = { "1": "hub", "2": "roadmap", "3": "quests", "4": "arc", "5": "armory", "6": "progress" };
+  const keys = { "1": "hub", "2": "roadmap", "3": "quests", "4": "season", "5": "arc", "6": "armory", "7": "progress" };
   if (keys[e.key]) { go(keys[e.key]); return; }
   if (S.view === "hub" && e.key === "Enter") { const p = $("#playbtn"); if (p) p.click(); }
 });
@@ -226,8 +316,8 @@ const VIEW_FN = {
     const ring = `<div class="ringlv"><svg viewBox="0 0 88 88"><circle class="t" cx="44" cy="44" r="38"/><circle class="a" cx="44" cy="44" r="38" stroke-dasharray="239" stroke-dashoffset="${239 * (1 - st.xpInLevel / 500)}"/></svg>${st.level}<small>LEVEL</small></div>`;
     const player = `<div class="plate"><div class="pl">${ring}<div><div class="kick">RANGER</div><h1>${esc(u.username)}</h1><div class="xpbar"><i style="width:${Math.round(st.xpInLevel / 5)}%"></i></div><div class="muted small" style="margin-top:6px">${st.xpInLevel} / 500 XP &middot; ${st.gamesFinished} games cleared</div></div></div>
       <div class="strip mini"><div><b>${st.accuracy == null ? "-" : st.accuracy + "%"}</b><span>Accuracy</span></div><div><b>${st.bestStreak}</b><span>Best streak</span></div><div><b>${S.hero ? S.hero.shards : 0}</b><span>Shards</span></div></div></div>`;
-    const menu = `<div class="qmenu">${[["roadmap", "World map", "2"], ["quests", "New quest", "3"], ["arc", "Arc Search", "4"], ["armory", "Armory", "5"], ["progress", "Progress", "6"]].map(([v, l, k]) => `<button class="qm" data-go="${v}"><kbd>${k}</kbd>${l}</button>`).join("")}</div>`;
-    const right = `<div class="col side">${ranks()}<div class="plate">${sh("!", "DAILY ORDERS")}<div class="nextlist">${next.length ? next.slice(0, 3).map((n) => `<div class="nx"><span><span class="k">${esc(n.kind.toUpperCase())}</span>${esc(n.text)}</span>${n.game ? `<a class="gbtn sm" href="/play.html?game=${encodeURIComponent(n.game)}"><span>Go</span></a>` : `<button class="gbtn sm" data-go="quests"><span>Upload</span></button>`}</div>`).join("") : '<div class="nx">Nothing queued. Forge a new quest.</div>'}</div></div></div>`;
+    const menu = `<div class="qmenu">${[["roadmap", "World map", "2"], ["quests", "New quest", "3"], ["season", "Season pass", "4"], ["arc", "Arc Search", "5"], ["armory", "Armory", "6"], ["progress", "Progress", "7"]].map(([v, l, k]) => `<button class="qm" data-go="${v}"><kbd>${k}</kbd>${l}</button>`).join("")}</div>`;
+    const right = `<div class="col side">${chalBlock()}${ranks()}<div class="plate">${sh("!", "DAILY ORDERS")}<div class="nextlist">${next.length ? next.slice(0, 3).map((n) => `<div class="nx"><span><span class="k">${esc(n.kind.toUpperCase())}</span>${esc(n.text)}</span>${n.game ? `<a class="gbtn sm" href="/play.html?game=${encodeURIComponent(n.game)}"><span>Go</span></a>` : `<button class="gbtn sm" data-go="quests"><span>Upload</span></button>`}</div>`).join("") : '<div class="nx">Nothing queued. Forge a new quest.</div>'}</div></div></div>`;
     if (!games.length) return `<div class="lobby"><div class="col">${player}${uploadBlock("Turn your notes into a game", true)}${menu}</div>${right}</div>`;
     const g = curGame(), cur = g.nodes.findIndex((n) => n.status === "current"), node = g.nodes[cur >= 0 ? cur : g.nodes.length - 1];
     const done = g.nodes.filter((n) => ["done", "mastered", "review"].includes(n.status)).length;
@@ -261,7 +351,16 @@ const VIEW_FN = {
     const ench = h.enchants.map((e) => `<div class="rowi eq ${e.equipped ? "on" : ""} ${e.unlocked ? "" : "locked"}" data-ench="${esc(e.id)}"><div class="cap">${e.equipped ? "&#10003;" : "&#9671;"}</div><div><h3>${esc(e.name)}</h3><p>${esc(e.desc)}</p></div><div class="tagx ${e.unlocked ? "" : "lock"}">${e.unlocked ? (e.equipped ? "EQUIPPED" : "EQUIP") : "LV " + e.unlock}</div></div>`).join("");
     const ups = h.upgrades.map((u) => `<div class="upgrade"><div><h3>${esc(u.name)} <span class="tagx">LV ${u.level}/${u.max}</span></h3><p>${esc(u.desc)}</p><div class="pips">${Array.from({ length: u.max }, (_, i) => `<i class="${i < u.level ? "on" : ""}"></i>`).join("")}</div></div>${u.cost == null ? '<span class="tagx">MAX</span>' : `<button class="gbtn sm" data-up="${esc(u.id)}" ${h.shards < u.cost ? "disabled" : ""}><span>&#9670; ${u.cost}</span></button>`}</div>`).join("");
     return `<div class="plate" style="margin-bottom:28px"><div class="kick">ARMORY</div><div class="shardbig">${h.shards}<small>KNOWLEDGE SHARDS</small></div><p class="muted small">Defeat enemies in ambushes to collect shards. Every shard teaches you a fact from your own material. Spend them to strengthen your ranger. Powers and enchantments unlock as your level rises.</p></div>
-      <div class="three"><div class="plate">${sh("01", "POWERS")}<div class="rows">${abil}</div></div><div class="plate">${sh("02", `ENCHANTMENTS (${h.equipped.length}/${h.slots})`)}<div class="rows">${ench}</div></div><div class="plate">${sh("03", "ENHANCEMENTS")}<div class="rows">${ups}</div></div></div>`;
+      <div class="three"><div class="plate">${sh("01", "POWERS")}<div class="rows">${abil}</div></div><div class="plate">${sh("02", `ENCHANTMENTS (${h.equipped.length}/${h.slots})`)}<div class="rows">${ench}</div></div><div class="plate">${sh("03", "ENHANCEMENTS")}<div class="rows">${ups}</div></div></div><div style="margin-top:22px">${lookBlock()}</div>`;
+  },
+  season() {
+    const rw = S.rw; if (!rw) return `<div class="col"><div class="empty">Loading the season...</div></div>`;
+    const se = rw.season, pctT = Math.round((se.inTier / se.tierXp) * 100);
+    const icon = (rwd) => rwd.type === "shards" ? `<i class="ti sh">&#9670;</i>` : rwd.type === "suit" ? `<i class="ti" style="background:linear-gradient(135deg,${LOOKC.suits[rwd.id][1]},${LOOKC.suits[rwd.id][0]})"></i>` : `<i class="ti" style="background:#0b0f0d;box-shadow:inset 0 0 0 4px ${LOOKC.trims[rwd.id]},0 0 14px ${LOOKC.trims[rwd.id]}"></i>`;
+    const tiers = se.track.map((t) => `<div class="tier ${t.claimed ? "claimed" : t.reached ? "ready" : ""} ${t.tier === se.tier + 1 ? "next" : ""}"><small>TIER ${t.tier}</small>${icon(t.reward)}<b>${esc(t.reward.name)}</b>${t.claimed ? '<em class="cpaid">CLAIMED</em>' : t.reached ? `<button class="gbtn sm" data-tier="${t.tier}"><span>Claim</span></button>` : `<em>${(t.tier * se.tierXp).toLocaleString()} XP</em>`}</div>`).join("");
+    return `<div class="plate seasonhead"><div class="kick">SEASON PASS</div><h1>${esc(se.name)}</h1><div class="row between"><span class="muted">Tier <b class="tiernow">${se.tier}</b> of ${se.tiers} &middot; ${se.xp.toLocaleString()} XP</span><span class="muted small">${se.tier < se.tiers ? `${se.tierXp - se.inTier} XP to tier ${se.tier + 1}` : "Season complete"}</span></div><div class="xpbar big"><i style="width:${pctT}%"></i></div>
+      <p class="muted small" style="margin-top:8px">Every right answer and every cleared chapter earns XP. Tiers unlock shards, new ranger suits and glow trims.</p></div>
+      <div class="track" id="track">${tiers}</div><div class="two" style="margin-top:22px">${chalBlock()}${lookBlock()}</div>`;
   },
   progress() {
     const st = S.rm.stats, ach = S.rm.achievements;
@@ -272,7 +371,13 @@ const VIEW_FN = {
 };
 const needLb = () => { if (!S.lb) api("/api/leaderboard").then((lb) => { S.lb = lb; if (["hub", "progress"].includes(S.view)) go(S.view); }).catch(() => {}); };
 const AFTER = {
-  hub() { document.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => go(b.dataset.go))); if ($("#upcard")) wireUpload(); needLb(); },
+  hub() { document.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => go(b.dataset.go))); if ($("#upcard")) wireUpload(); needLb(); wireChal(); },
+  season() {
+    wireChal(); wireLook(); const nx = $("#track .next") || $("#track .ready"); if (nx) nx.scrollIntoView({ inline: "center", block: "nearest" });
+    document.querySelectorAll("[data-tier]").forEach((b) => (b.onclick = async () => {
+      try { const res = await rwPost("/api/rewards/claim", { kind: "tier", id: b.dataset.tier }); S.rw = res; if (S.hero) S.hero.shards = res.shards; const rwd = res.reward; rewardPop("TIER " + b.dataset.tier + " UNLOCKED", rwd.type === "shards" ? rwd.amount : 1, rwd.type === "shards" ? "Knowledge shards added." : "New " + rwd.type + ": <b>" + esc(rwd.name) + "</b>. Equip it in the Armory.", () => go("season")); } catch (e) { toast(e.message); }
+    }));
+  },
   roadmap() { wireRoad(); document.querySelectorAll("[data-road]").forEach((b) => (b.onclick = () => { S.road = +b.dataset.road; go("roadmap"); })); },
   quests() {
     document.querySelectorAll("[data-rebuild]").forEach((b) => (b.onclick = async () => {
@@ -298,6 +403,7 @@ const AFTER = {
       let ids = S.hero.enchants.filter((x) => x.equipped).map((x) => x.id); ids = e.equipped ? ids.filter((i) => i !== e.id) : [...ids, e.id].slice(-S.hero.slots);
       try { S.hero = await api("/api/hero/equip", "POST", { enchants: ids }); go("armory"); } catch (er) { toast(er.message); }
     }));
+    wireLook();
     document.querySelectorAll("[data-up]").forEach((b) => (b.onclick = async () => { try { S.hero = await api("/api/hero/upgrade", "POST", { id: b.dataset.up }); toast("Enhancement upgraded"); go("armory"); } catch (er) { toast(er.message); } }));
   },
   progress() { needLb(); },
@@ -372,7 +478,7 @@ async function adminInbox() {
 }
 
 async function refresh() {
-  bootScreen(true); S.lb = null; await load(); dash(); setTimeout(() => bootScreen(false), 650);
+  bootScreen(true); S.lb = null; await load(); dash(); setTimeout(() => { bootScreen(false); checkLevelUp(); setTimeout(dailyPop, 700); }, 650);
   if (S.coach && S.coach.aiPending) setTimeout(async () => { try { S.coach = await api("/api/coach"); const el = $("#coach"); if (el && S.coach.ai) el.outerHTML = coachCard(S.coach); } catch (e) {} }, 20000);
 }
 async function boot() {

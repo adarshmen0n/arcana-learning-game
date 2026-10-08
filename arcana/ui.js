@@ -146,7 +146,7 @@ const UI = (() => {
     muted: '<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 9l5 6M22 9l-5 6"/>',
   };
   const icon = (name, cls = "") => `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${IC[name] || ""}</svg>`;
-  const STATION = { npc: "talk", obstacle: "lock", match: "swords", mission: "scroll", maze: "pad", shooter: "pad", level_test: "book", mini_boss: "skull", final_boss: "skull", combat: "swords", tablet: "book" };
+  const STATION = { npc: "talk", obstacle: "lock", match: "swords", mission: "scroll", maze: "pad", shooter: "pad", snake: "pad", hill: "pad", level_test: "book", mini_boss: "skull", final_boss: "skull", combat: "swords", tablet: "book" };
   let player = { name: "Ranger", gender: "m" };
   function setPlayer(name, gender) { player = { name, gender }; const n = $("#pname"); if (n) n.textContent = name.toUpperCase(); const a = $("#avatar"); if (a) a.style.backgroundImage = ""; }
   let hudBuilt = false, shownScore = 0, scoreTarget = 0, scoreRaf = 0, lastScore = 0, lastHp = null, lastLevel = 1;

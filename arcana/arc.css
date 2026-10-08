@@ -40,5 +40,5 @@
 #arc-btn.ingame { position: absolute; top: auto; right: auto; left: 1.4cqw; bottom: 1.4cqw; transform: none; flex-direction: row; gap: .6cqw; padding: .55cqw 1cqw; z-index: 9; border: 1.5px solid #39ff14; clip-path: polygon(.6cqw 0, 100% 0, 100% calc(100% - .6cqw), calc(100% - .6cqw) 100%, 0 100%, 0 .6cqw); }
 #arc-btn.ingame span { writing-mode: horizontal-tb; transform: none; font-size: clamp(9px, .85cqw, 13px); } #arc-btn.ingame i { font-size: clamp(11px, 1.1cqw, 16px); } #arc-btn.ingame kbd { font-size: clamp(8px, .7cqw, 11px); }
 #arc-btn.ingame.on { right: auto; } #arc-btn.ingame.locked { opacity: .45; } #arc-btn.ingame.shake { animation: shake2 .4s; } @keyframes shake2 { 25% { transform: translateX(-5px); } 75% { transform: translateX(4px); } }
-@media (pointer: coarse) { #arc-btn.ingame { bottom: auto; top: 8cqw; } }
-#arc-btn.ingame { bottom: auto; top: 7.4cqw; }
+@media (pointer: coarse) { #arc-btn.ingame { bottom: auto; top: max(8cqw, 62px); } }
+#arc-btn.ingame { bottom: auto; top: max(7.4cqw, 62px); }

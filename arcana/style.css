@@ -362,3 +362,5 @@ p.lesson { font-size: clamp(14px, 1.7cqw, 22px); line-height: 1.45; }
 
 .facts { max-height: 38vh; overflow-y: auto; }
 .gradebig { font-size: clamp(30px, 4.6cqw, 64px); }
+/* phones: combat buttons sit above the move/jump pads, slots go to the top, the keyboard cheat sheet hides */
+@media (pointer: coarse) { #cb-moves { display: none !important; } #ctouch { bottom: calc(min(15cqw, 90px) + 4cqw) !important; right: 2cqw !important; } #cb .cb-slots { bottom: auto; top: 1.4cqw; transform: translateX(-50%) scale(.85); transform-origin: top center; } }

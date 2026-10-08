@@ -1,12 +1,13 @@
-# Arcana AI (v2.0)
+# Arcana AI (v2.1)
 
 Turn any study material into a playable 2D adventure. Students walk, jump and fight through chapters that teach the material, take quizzes as boss fights and arcade levels, and the game learns how each student studies and adapts to them.
 
-- **Arena dashboard:** a clean esports-arena x learning-platform hub: Quest Log on the left, a holographic skill tree in the centre (topics light up as you master them), a global leaderboard on the right (students can hide themselves).
+- **Game lobby:** a neon game menu over a living stage where your ranger trains. Continue your quest, world map, ranks (students can hide themselves), lobby music with a mute button.
+- **Rewards:** level-up moments with XP count-ups, a daily login reward and streak flame (day 7 pays a jackpot), three daily challenges that pay shards for real study, a 20-tier season pass, and ranger looks (suits and glow trims) shown in the lobby and in every game.
 - **Teaching first:** every chapter has four mentors (introduction, core lesson, deep dive, recap) who speak 5 to 7 lines each and end with a key idea, plus two Knowledge Tablets (key points, a worked example, a common mistake, key terms). At least 60% of every chapter is teaching; questions are written only about what the lessons taught.
 - **Arc Search:** an AI assistant (like ChatGPT) built into the game and the hub. Ask anything; it checks live sources (Wikipedia for free, or Tavily/Brave if you add a key) so facts that change over time are current, cites them, and inside a game it also uses your own uploaded notes, and it keeps your notes from every lesson and tablet. It is locked while a question, quest or fight is on screen.
-- **Combat:** ambush fights are real-time with buttons (strike, kick, guard, dodge, powers). Every enemy carries a knowledge shard: a fact from your own upload. Bosses, missions and trials stay question-based. Powers and enchantments unlock as you level up; shards buy permanent enhancements in the Armory.
-- **Game:** side-scrolling adventure with a man or woman ranger, animated martial-arts and magic fights, a Pac-Man style maze and a Space-Invaders style shooter, five themed worlds, and a revision screen for missed questions.
+- **Combat:** ambush fights are real-time with buttons (strike, kick, guard, dodge, powers) and come in waves: 2 waves in an ambush, 3 waves and a champion in an elite fight. Difficulty follows your mastery so fights are hard but winnable. Every enemy carries a knowledge shard: a fact from your own upload. Bosses, missions and trials stay question-based. Powers and enchantments unlock as you level up; shards buy permanent enhancements in the Armory.
+- **Game:** side-scrolling adventure with a man or woman ranger, animated martial-arts and magic fights, four mini-games (a Pac-Man style maze, Snake, a Hill Climb rally and a Space-Invaders style shooter, one in every chapter, each asking questions from your material and explaining every right answer), five themed worlds, and a revision screen for missed questions.
 - **Upload to game:** PDF, DOCX, PPTX, TXT, MD, HTML or images become chapters, lessons, missions and checked questions. Several AI services work as automatic backups for each other (Gemini, Groq, OpenRouter, Claude, Mistral, DeepSeek, OpenAI, local Ollama), and an offline mode works with no key at all.
 - **Accounts:** sign up with email and password (or Google), strong-password check, terms and privacy pages, password change and reset by email, download-my-data, delete-account, help centre with a support inbox. Every student has a private account and stays logged in. Games, answers and progress belong to that student only. There are no teachers or classes: the game is the teacher.
 - **Adaptive:** accuracy, pace, mistakes and hints are tracked per topic. ARCANA changes your difficulty (hearts, boss size, rival skill), hints, explanations and extra practice to fit you.
@@ -43,7 +44,7 @@ Set `ADMIN_EMAILS` to your own account email: when you log in you see a Support 
 Students can always use a username and password. To also show **Continue with Google**: in Google Cloud Console create an OAuth client of type *Web application*, add your site address (for example your onrender.com URL) under *Authorized JavaScript origins*, and set `GOOGLE_CLIENT_ID` in `.env` or the Render environment. The server verifies each Google token itself and links it to one private account.
 
 ## How generation stays on your material
-The upload is split into passages and ranked (BM25). Each chapter is written only from the passages that match its topic, then a second AI pass re-answers every question, and finally each question is checked against your text; anything your material does not support is removed.
+The whole upload is split, in order, into parts (up to 20) and every part becomes its own chapter, so the game is as long as the material. After the lessons are written, a coverage check compares them with the part; anything not yet taught gets an extra mentor lesson. Without a Claude key, flagged topics are filled in from a free web lookup. Each chapter is written only from its own passages, then a second AI pass re-answers every question, and finally each question is checked against your text; anything your material does not support is removed.
 
 ## Controls
 `A`/`D` or arrows move, `W`/Space jump, Shift sprint, `E` interact, `1`-`4` choose answers, `M` mute. In a fight: `J` 4-hit strike chain, `K` kick (hold to break guards), `U` launcher then `J` in the air, `L` grab and throw, `S`+`J` sweep, `Shift` dodge then `J` dash strike, air `K` dive kick, air `S`+`K` ground slam, tap `S` as a hit lands to parry (reflects bolts), `E` execute a stunned weak enemy, `1`-`4` powers, `H` hide the move list. `Q` opens Arc Search. On phones: on-screen buttons, rotate to landscape.
@@ -54,6 +55,8 @@ python server/test_ingest.py     # file readers
 python server/test_ai_path.py    # AI layer + provider failover (local stand-ins, no keys, no cost)
 python server/test_platform.py   # accounts, privacy between students, adaptation, roadmap
 python server/test_mastery.py    # mastery and difficulty engine
+python server/test_generation.py # generation pipeline, full coverage of the upload
+python server/test_rewards.py    # streaks, daily challenges, season pass, cosmetics
 python server/pg_test.py         # platform tests on a throwaway Postgres (pip install pgserver)
 ```
 

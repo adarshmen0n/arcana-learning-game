@@ -10,6 +10,7 @@ import config
 import db
 import arc
 import hero
+import rewards
 import mail
 import student
 import remedial
@@ -141,7 +142,8 @@ def google_login(r):
 
 
 def hero_get(r):
-    return hero.view(r.need())
+    u = r.need()
+    return {**hero.view(u), "look": rewards.look(u)}
 
 
 def hero_upgrade(r):
@@ -167,6 +169,35 @@ def hero_earn(r):
     except (TypeError, ValueError):
         raise Err(400, "Bad numbers.")
     return hero.earn(u, sh, ki)
+
+
+def _tz(r):
+    try:
+        return max(-840, min(840, int(r.q1("tz") or r.body.get("tz") or 0)))
+    except (TypeError, ValueError, AttributeError):
+        return 0
+
+
+def rewards_get(r):
+    return rewards.status(r.need(), _tz(r))
+
+
+def rewards_claim(r):
+    u = r.need()
+    limit(("claim", u["id"]), 60, 600)
+    out, err = rewards.claim(u, clean(r.body.get("kind"), 20), clean(str(r.body.get("id") or ""), 20), _tz(r))
+    if err:
+        raise Err(400, err)
+    return out
+
+
+def rewards_cosmetic(r):
+    u = r.need()
+    limit(("cos", u["id"]), 60, 600)
+    out, err = rewards.cosmetic(u, clean(r.body.get("action"), 10), clean(r.body.get("kind"), 10), clean(r.body.get("id"), 20), _tz(r))
+    if err:
+        raise Err(400, err)
+    return out
 
 
 def remedial_start(r):
@@ -545,7 +576,7 @@ def status(r):
 ROUTES = [
     ("GET", r"/api/status", status), ("GET", r"/api/me", me),
     ("POST", r"/api/register", register), ("POST", r"/api/login", login), ("POST", r"/api/google", google_login), ("POST", r"/api/password", password_change), ("POST", r"/api/forgot", forgot), ("POST", r"/api/reset", reset), ("POST", r"/api/logout-all", logout_all), ("GET", r"/api/export", export),
-    ("POST", r"/api/support", support_create), ("GET", r"/api/support", support_mine), ("GET", r"/api/admin/tickets", admin_tickets), ("POST", r"/api/admin/tickets/([0-9]+)", admin_ticket_set), ("GET", r"/api/coach", coach_get), ("GET", r"/api/leaderboard", leaderboard_get), ("GET", r"/api/arc", arc_get), ("POST", r"/api/arc", arc_post), ("DELETE", r"/api/arc", arc_delete), ("POST", r"/api/games/([a-z0-9]{4,40})/rebuild", game_rebuild), ("POST", r"/api/remedial", remedial_start), ("GET", r"/api/remedial", remedial_status), ("POST", r"/api/report", report_question), ("GET", r"/api/hero", hero_get), ("POST", r"/api/hero/upgrade", hero_upgrade), ("POST", r"/api/hero/equip", hero_equip), ("POST", r"/api/hero/earn", hero_earn), ("POST", r"/api/logout", logout),
+    ("POST", r"/api/support", support_create), ("GET", r"/api/support", support_mine), ("GET", r"/api/admin/tickets", admin_tickets), ("POST", r"/api/admin/tickets/([0-9]+)", admin_ticket_set), ("GET", r"/api/coach", coach_get), ("GET", r"/api/leaderboard", leaderboard_get), ("GET", r"/api/arc", arc_get), ("POST", r"/api/arc", arc_post), ("DELETE", r"/api/arc", arc_delete), ("POST", r"/api/games/([a-z0-9]{4,40})/rebuild", game_rebuild), ("POST", r"/api/remedial", remedial_start), ("GET", r"/api/remedial", remedial_status), ("POST", r"/api/report", report_question), ("GET", r"/api/hero", hero_get), ("GET", r"/api/rewards", rewards_get), ("POST", r"/api/rewards/claim", rewards_claim), ("POST", r"/api/rewards/cosmetic", rewards_cosmetic), ("POST", r"/api/hero/upgrade", hero_upgrade), ("POST", r"/api/hero/equip", hero_equip), ("POST", r"/api/hero/earn", hero_earn), ("POST", r"/api/logout", logout),
     ("POST", r"/api/profile", profile_set), ("DELETE", r"/api/account", account_delete),
     ("GET", r"/api/games", games_list), ("DELETE", r"/api/games/([a-z0-9]{4,40})", game_delete),
     ("GET", r"/api/scripts/([a-z0-9]+)", script_get),

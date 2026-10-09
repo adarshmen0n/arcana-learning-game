@@ -1,0 +1,358 @@
+<title>How ARCANA AI Was Built</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column (~70ch) with a sticky contents rail on wide screens; game-console accents only on headings and labels */
+:root {
+  --bg: #f6f8f4; --surface: #ffffff; --fg: #17201a; --muted: #56645a; --line: #d9e2d6;
+  --accent: #1b7a12; --accent-soft: #e5f3df; --warn: #9a5b00; --warn-soft: #fbf0dc; --code-bg: #eef3ea;
+  --display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0b100d; --surface: #111a14; --fg: #e3eee0; --muted: #9db09f; --line: #223026;
+  --accent: #5ef03f; --accent-soft: #15301a; --warn: #f2b45a; --warn-soft: #2e2412; --code-bg: #142019; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0b100d; --surface: #111a14; --fg: #e3eee0; --muted: #9db09f; --line: #223026;
+  --accent: #5ef03f; --accent-soft: #15301a; --warn: #f2b45a; --warn-soft: #2e2412; --code-bg: #142019; color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font: 17px/1.62 var(--body); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 80px; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 20px); align-self: start; font-size: 14px; }
+nav.toc b { display: block; font: 700 12px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; counter-reset: t; }
+nav.toc li { counter-increment: t; }
+nav.toc a { color: var(--fg); text-decoration: none; display: grid; grid-template-columns: 24px 1fr; }
+nav.toc a::before { content: counter(t); color: var(--accent); font: 600 12px var(--mono); padding-top: 2px; }
+nav.toc a:hover { color: var(--accent); }
+main { min-width: 0; max-width: 72ch; }
+header.hero { padding-bottom: 24px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.eyebrow { font: 700 12px var(--display); letter-spacing: .2em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 700 clamp(32px, 5vw, 48px)/1.08 var(--display); margin: 10px 0 14px; text-wrap: balance; }
+h2 { font: 700 26px/1.2 var(--display); margin: 56px 0 12px; text-wrap: balance; scroll-margin-top: 20px; }
+h2 .n { color: var(--accent); font-family: var(--mono); font-size: 16px; margin-right: 10px; vertical-align: 4px; }
+h3 { font: 700 19px/1.3 var(--body); margin: 28px 0 6px; }
+p { margin: 0 0 14px; }
+.lead { font-size: 19px; color: var(--muted); }
+a { color: var(--accent); }
+code, .mono { font-family: var(--mono); font-size: .86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+ul, ol { padding-left: 22px; margin: 0 0 14px; } li { margin: 4px 0; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 22px 0 6px; }
+.facts div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.facts b { display: block; font: 700 24px var(--display); color: var(--accent); font-variant-numeric: tabular-nums; }
+.facts span { font-size: 14px; color: var(--muted); }
+.note { background: var(--accent-soft); border-left: 3px solid var(--accent); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 18px 0; }
+.note.warn { background: var(--warn-soft); border-left-color: var(--warn); }
+.note b:first-child { display: block; font: 700 12px var(--display); letter-spacing: .14em; text-transform: uppercase; margin-bottom: 4px; }
+.tablewrap { overflow-x: auto; margin: 14px 0 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; min-width: 620px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+th { font: 700 12px var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); background: var(--code-bg); }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 700; white-space: nowrap; }
+.steps { counter-reset: s; list-style: none; padding: 0; display: grid; gap: 10px; }
+.steps li { counter-increment: s; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; margin: 0; }
+.steps li::before { content: counter(s); width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font: 700 13px var(--mono); }
+.timeline { border-left: 2px solid var(--line); padding-left: 18px; display: grid; gap: 14px; margin: 16px 0; }
+.timeline div b { display: block; font: 700 15px var(--display); color: var(--accent); }
+pre.mermaid { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; overflow-x: auto; }
+dl.qa dt { font-weight: 700; margin-top: 16px; }
+dl.qa dd { margin: 4px 0 0; color: var(--fg); }
+dl.gloss { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 8px 16px; }
+dl.gloss dt { font-weight: 700; } dl.gloss dd { margin: 0; color: var(--muted); }
+footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+@media (max-width: 900px) { .wrap { grid-template-columns: 1fr; gap: 10px; } nav.toc { position: static; border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: var(--surface); } nav.toc ol { grid-template-columns: 1fr 1fr; } dl.gloss { grid-template-columns: 1fr; } dl.gloss dd { margin-bottom: 8px; } }
+@media (max-width: 480px) { nav.toc ol { grid-template-columns: 1fr; } body { font-size: 16px; } }
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <b>Contents</b>
+  <ol>
+    <li><a href="#what">What ARCANA AI is</a></li>
+    <li><a href="#roles">Who did what</a></li>
+    <li><a href="#big">The big picture</a></li>
+    <li><a href="#stack">Tools and why</a></li>
+    <li><a href="#make">How a game is made</a></li>
+    <li><a href="#play">Inside the game</a></li>
+    <li><a href="#learn">How it teaches and adapts</a></li>
+    <li><a href="#fun">Rewards and motivation</a></li>
+    <li><a href="#safe">Accounts and security</a></li>
+    <li><a href="#fast">Speed, phones and scale</a></li>
+    <li><a href="#timeline">How it was built, step by step</a></li>
+    <li><a href="#problems">Problems we solved</a></li>
+    <li><a href="#tests">Testing and deployment</a></li>
+    <li><a href="#limits">Limits and next steps</a></li>
+    <li><a href="#mentor">Questions a mentor may ask</a></li>
+    <li><a href="#words">Glossary</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">Project explainer · ARCANA AI v2.1</div>
+  <h1>How ARCANA AI was built</h1>
+  <p class="lead">A student uploads their notes. ARCANA reads every word, turns the material into a 2D adventure game with lessons, mini-games, fights and boss quizzes, and then adapts to how that student learns. This page explains what was built, which tools were used, how they fit together and why each choice was made.</p>
+  <p>Live app: <a href="https://arcana-ai-16xh.onrender.com" target="_blank" rel="noopener">arcana-ai-16xh.onrender.com</a> · Code: <a href="https://github.com/adarshmen0n/arcana-learning-game" target="_blank" rel="noopener">github.com/adarshmen0n/arcana-learning-game</a></p>
+  <div class="facts">
+    <div><b>~10,000</b><span>lines of code</span></div>
+    <div><b>13</b><span>browser script files</span></div>
+    <div><b>26</b><span>server modules</span></div>
+    <div><b>7</b><span>automated test suites</span></div>
+    <div><b>3</b><span>outside Python packages</span></div>
+  </div>
+</header>
+
+<h2 id="what"><span class="n">01</span>What ARCANA AI is</h2>
+<p>ARCANA AI is a web app and installable phone app that turns any study material into a playable learning game. The main idea: students learn better when they are playing, so the app hides real teaching inside a game they actually want to finish.</p>
+<ul>
+  <li><b>Input:</b> a PDF, Word file, PowerPoint, text, web page or even a photo of notes.</li>
+  <li><b>Output:</b> a side-scrolling adventure. Each chapter covers one part of the material: mentors teach it, knowledge tablets summarise it, three mini-games and a fight test it, and a boss quiz checks it.</li>
+  <li><b>After playing:</b> the app tracks what the student knows per topic, adjusts difficulty, draws a roadmap of what to learn next, and offers an AI assistant (Arc Search) for questions.</li>
+</ul>
+<p>The rule behind the design is <b>teaching first</b>: at least about 60% of every chapter is teaching (mentors and tablets) and the rest is practice. Every question is written only from what the lessons taught, and is checked against the student's own text.</p>
+
+<h2 id="roles"><span class="n">02</span>Who did what</h2>
+<p>This project was built through <b>AI-assisted development</b>. Adarsh Menon was the product owner: he decided what the app should be, tested it, rejected designs he did not like, and gave every requirement. The code was written by <b>Claude Code</b>, an AI coding assistant made by Anthropic, which works directly in the project folder: it reads files, writes code, runs tests, opens the app in a browser to check it, and deploys it.</p>
+<div class="note"><b>How to describe it to a mentor</b>"I designed and directed the product: the idea, the features, the look, the priorities and the testing on my phone. I used an AI coding agent to write and test the code under my direction. I understand how the parts fit together, and this page is my record of every decision."</div>
+<p>Examples of decisions that came from Adarsh and changed the build: rejecting a glass-style dashboard and a business-style dashboard in favour of a real game lobby, asking for 60% teaching instead of mostly questions, demanding mature characters instead of childlike ones, removing the daily limit, and requiring every chapter to have three mini-games and its own scenery.</p>
+
+<h2 id="big"><span class="n">03</span>The big picture</h2>
+<p>The app has three layers: what runs in the student's browser, the server that does the heavy work, and outside services the server talks to.</p>
+<pre class="mermaid">
+flowchart LR
+  subgraph Phone or PC browser
+    L[Lobby: menus, ranger, rewards]
+    G[Game: Phaser engine, lessons, mini-games, fights]
+  end
+  subgraph Render server - Python
+    A[Web API and file server]
+    P[Game builder pipeline]
+    R[AI router]
+    S[Mastery, roadmap, coach, rewards]
+  end
+  DB[(Neon PostgreSQL database)]
+  AI[AI services: Gemini x4, Groq, OpenRouter]
+  W[Wikipedia]
+  L --> A
+  G --> A
+  A --> P --> R --> AI
+  A --> S --> DB
+  P --> DB
+  P --> W
+  A --> W
+</pre>
+<ul>
+  <li><b>Browser</b>: draws the lobby and the game, handles controls and sound, and sends answers back to the server.</li>
+  <li><b>Server</b>: accounts, saving progress, reading uploaded files, building games with AI, and the learning model.</li>
+  <li><b>Database</b>: stores accounts, games, answers, mastery and rewards so nothing is lost when the server restarts.</li>
+  <li><b>AI services</b>: write the lessons and questions. Several are used so the app keeps working when one is busy.</li>
+</ul>
+
+<h2 id="stack"><span class="n">04</span>Tools used, and why each one</h2>
+<div class="tablewrap"><table>
+<thead><tr><th>Tool</th><th>What it does here</th><th>Why it was chosen</th></tr></thead>
+<tbody>
+<tr><td>HTML, CSS, JavaScript</td><td>All screens: login, lobby, menus, game overlays</td><td>Runs in every browser with no install. Plain JavaScript (no React or similar) keeps the app small and fast on phones and needs no build step.</td></tr>
+<tr><td>Phaser 3</td><td>The 2D game engine: drawing, camera, animation, particles, scenes</td><td>A mature, free engine made for browser games. It uses the graphics card (WebGL), so scrolling worlds and fights stay smooth.</td></tr>
+<tr><td>Canvas drawing in code</td><td>Every character, enemy, world and effect is drawn by code, not image files</td><td>No artwork to buy or license, tiny downloads, and every character can change colour (suits and trims) instantly.</td></tr>
+<tr><td>Web Audio</td><td>Lobby music and sound effects, generated live</td><td>No audio files to download; music can change mood per world.</td></tr>
+<tr><td>PWA (manifest + service worker)</td><td>Lets the site install like an app on a phone home screen</td><td>An app-store app would need separate Android and iPhone builds. A PWA is one codebase that installs from the browser.</td></tr>
+<tr><td>Python (standard library server)</td><td>The web server and API</td><td>Python is great for text processing and AI work. Using its built-in web server means almost no dependencies to break.</td></tr>
+<tr><td>pypdf</td><td>Reads text from PDFs</td><td>Pure Python and reliable; works on the free server without extra system software.</td></tr>
+<tr><td>psycopg</td><td>Talks to the PostgreSQL database</td><td>The standard Python driver for PostgreSQL.</td></tr>
+<tr><td>anthropic</td><td>Optional connection to Claude</td><td>If a Claude key is added, it gives the highest-quality lessons and web research.</td></tr>
+<tr><td>SQLite / PostgreSQL (Neon)</td><td>The database (SQLite on a laptop, PostgreSQL online)</td><td>SQLite needs no setup for development. Online, Render's free plan erases its disk on restart, so data lives in Neon's free PostgreSQL instead.</td></tr>
+<tr><td>Gemini, Groq, OpenRouter</td><td>The AI that writes lessons, questions and answers</td><td>All have free tiers. Each free key has a limit, so the app uses several keys and switches between them automatically.</td></tr>
+<tr><td>BM25 search (written in the project)</td><td>Finds the most relevant passages of the student's text</td><td>Used to check every question against the original text, and to give Arc Search the student's own notes. Written in-house so it needs no extra service.</td></tr>
+<tr><td>Wikipedia API</td><td>Free live facts</td><td>Fills gaps in thin material and keeps Arc Search up to date, at no cost.</td></tr>
+<tr><td>Render</td><td>Hosts the live app</td><td>Free web hosting that redeploys automatically whenever new code is pushed to GitHub.</td></tr>
+<tr><td>Git and GitHub</td><td>Version history and backup of all code</td><td>Every change is a saved commit (32 so far), so any version can be restored, and Render deploys from it.</td></tr>
+</tbody></table></div>
+
+<h2 id="make"><span class="n">05</span>How a game is made from an upload</h2>
+<p>This is the core of the project: the <b>game builder pipeline</b> (<code>server/pipeline.py</code>). When a student presses <i>Forge my game</i>, these steps run in order:</p>
+<ol class="steps">
+  <li><div><b>Wait for a slot.</b> At most 3 games are built at once. Others wait in a line and see "2 games ahead of you". This protects the free AI limits when many students upload together.</div></li>
+  <li><div><b>Read the file.</b> <code>ingest.py</code> extracts the text from PDF, DOCX, PPTX, TXT, Markdown, HTML or CSV. Scanned PDFs and photos have no text layer, so they are sent to Gemini's vision model to be read like a person would read them.</div></li>
+  <li><div><b>Check the shared cache.</b> The text is fingerprinted (SHA-256). If anyone already built a game from exactly the same material, it is reused instantly with no AI calls. Useful when a whole class uploads the same chapter.</div></li>
+  <li><div><b>Split into chapters.</b> The full text is cut, in order, into parts of about 220 words (at least 2, at most 20). Every word belongs to exactly one part, so nothing is skipped and longer material makes a longer game.</div></li>
+  <li><div><b>Plan.</b> The AI reads everything and returns a plan: a title, the list of concepts, one chapter per part, a mood for each chapter (science, nature, history and so on), boss names and mentor names. The AI must answer in a fixed format (JSON with a schema), which the server checks.</div></li>
+  <li><div><b>Fill gaps.</b> Concepts the AI marks as thin or possibly out of date are looked up on Wikipedia, with sources kept.</div></li>
+  <li><div><b>Write each chapter.</b> Up to 3 chapters are written at the same time. Inside a chapter, the lessons (4 mentors) and the 2 knowledge tablets are written in parallel, then two sets of questions are written in parallel, using only what the lessons taught.</div></li>
+  <li><div><b>Coverage check.</b> The server compares the lessons with the original part word by word. If less than 92% was taught, the AI writes an extra "More to know" mentor for the missing parts.</div></li>
+  <li><div><b>Quality checks on questions.</b> A second AI pass re-answers every question and removes doubtful ones; repeated questions are removed; and a grounding check (BM25) removes any question that the student's own text does not support.</div></li>
+  <li><div><b>Assemble the chapter.</b> Lessons, tablets, 3 mini-games, two fights, a match, a mission, a trial and a mini-boss are placed in order, with a world, weather and boss chosen so each chapter looks different.</div></li>
+  <li><div><b>Validate and save.</b> The finished game is checked for structure, saved to the database, and only then unlocked for the student.</div></li>
+</ol>
+<div class="note warn"><b>If the AI is busy</b>Free AI services sometimes run out of quota. The builder spreads calls across all keys, waits up to 10 minutes for a busy service, and if all are still busy it builds a quick version (fill-in-the-blank questions made without AI) so the student can always play. Pressing Rebuild later adds full AI lessons.</div>
+<h3>How the AI router works</h3>
+<p><code>server/llm.py</code> treats every AI service as interchangeable. Each request goes to the least busy key of the preferred service. If it fails (limit reached, server overloaded, model retired), the router marks that key as "cooling down" and tries the next one automatically. This is called <b>failover</b>, and it is the reason the app works on free AI plans.</p>
+
+<h2 id="play"><span class="n">06</span>Inside the game</h2>
+<h3>The order of a chapter</h3>
+<p>Every chapter follows the same rhythm, so students learn the pattern and focus on the content:</p>
+<ol>
+  <li>Mentor 1 introduces the topic, a <b>knowledge tablet</b> summarises key points, then an <b>ambush fight</b>.</li>
+  <li>Mentor 2 teaches the core ideas, followed by <b>mini-game 1</b>.</li>
+  <li>Tablet 2 and Mentor 3 go deeper, then a <b>match</b> against a rival and <b>mini-game 2</b>.</li>
+  <li>Mentor 4 recaps the chapter, then <b>mini-game 3</b>.</li>
+  <li>A <b>mission</b> (put steps in order or match terms), a <b>trial</b> quiz, an <b>elite fight</b>, and the <b>mini-boss</b>.</li>
+</ol>
+<h3>The four mini-games</h3>
+<p>Each chapter plays three of them, rotating. All ask questions from the student's material and show a short "why" explanation after a right answer.</p>
+<ul>
+  <li><b>Maze Run</b> (Pac-Man style): reach the terminal with the right answer while sentries chase you.</li>
+  <li><b>Snake Trail</b>: steer into the right answer to grow; wrong answers shrink you.</li>
+  <li><b>Hill Climb Rally</b>: drive through the gate with the right answer; hit a ramp fast to jump over wrong ones, and watch your fuel.</li>
+  <li><b>Invaders</b> (Space Invaders style): shoot the block with the right answer while dodging fire.</li>
+</ul>
+<h3>Fights</h3>
+<p>Fights are real-time with buttons (keyboard on PC, on-screen buttons on phones): a 4-hit combo, kicks, a charged guard breaker, launcher and air combos, throws, sweeps, dodges, perfect parries and four powers. Every enemy carries a "knowledge shard": a fact from the student's own material that is shown when it is defeated. Ambushes come in 2 waves; elite fights in 3 waves plus a gold champion. Difficulty follows the student's mastery, so fights stay hard but winnable.</p>
+<h3>Every chapter looks different</h3>
+<p>There are 6 hand-coded worlds (crystal cave, ancient forest, ember citadel, desert canyon, aurora peaks, neon grid). No world appears twice in a row, and when worlds repeat they come at another time of day or weather (dusk with embers, night with rain and lightning, snow and others). Each chapter also gets its own enemy line-up, armour colours, champion and boss.</p>
+<h3>Characters</h3>
+<p>Characters are built like puppets: separate head, torso, arms and legs drawn in code and joined at the joints. Animations (strikes, kicks, running, breathing) are keyframes that rotate those joints with easing curves, the same idea used in professional 2D games.</p>
+
+<h2 id="learn"><span class="n">07</span>How it teaches and adapts</h2>
+<ul>
+  <li><b>Mastery per topic</b> (<code>mastery.py</code>): every answer updates a score from 0 to 1 for that concept. Right answers raise it (more for harder questions and streaks), wrong answers lower it, and using a hint counts for less. Topics are then labelled weak, learning or strong.</li>
+  <li><b>Adaptive difficulty</b>: the student's accuracy, pace and mistakes set their difficulty level (hearts, boss strength, rival skill, fight toughness).</li>
+  <li><b>Roadmap</b>: a world map of every chapter showing done, mastered, needs review and locked, with what to study next.</li>
+  <li><b>AI coach</b> (<code>coach.py</code>): looks at habits like guessing, speed and forgetting, and gives a short study plan.</li>
+  <li><b>Remedial practice</b> (<code>remedial.py</code>): builds extra practice for weak topics from the same uploaded text.</li>
+  <li><b>Arc Search</b> (<code>arc.py</code>): a built-in AI assistant. It checks Wikipedia for facts that change over time, cites sources, uses the student's own notes, and is locked during quizzes and fights so it cannot be used to cheat.</li>
+</ul>
+
+<h2 id="fun"><span class="n">08</span>Rewards and motivation</h2>
+<ul>
+  <li><b>XP and levels</b> from real study (right answers and chapters cleared), with a level-up celebration.</li>
+  <li><b>Daily login streak</b> with a flame in the top bar; day 7 pays a jackpot.</li>
+  <li><b>Three daily challenges</b> (for example "answer 10 questions correctly"), counted from real answers.</li>
+  <li><b>A 20-tier season pass</b> that unlocks shards, ranger suits and glow trims.</li>
+  <li><b>Armory</b>: knowledge shards from fights buy permanent upgrades; powers unlock with level.</li>
+  <li><b>Leaderboard</b>, which any student can hide from.</li>
+</ul>
+<p>These are built in <code>server/rewards.py</code> and <code>server/hero.py</code>. Every reward is earned by studying, so the game loop always pushes back toward learning.</p>
+
+<h2 id="safe"><span class="n">09</span>Accounts and security</h2>
+<ul>
+  <li><b>Passwords are never stored.</b> Only a scrypt hash with a random salt is kept, so even the database owner cannot read them.</li>
+  <li><b>Sessions</b> use a secure, HttpOnly cookie that lasts 30 days, so students stay logged in.</li>
+  <li><b>Privacy between students</b>: every game, answer and score belongs to one account and the server checks ownership on every request.</li>
+  <li><b>Rate limits</b> stop password guessing and abuse.</li>
+  <li><b>Safe display</b>: all text from uploads or AI is escaped before it is shown, so a malicious file cannot inject code.</li>
+  <li><b>Keys stay on the server</b> in a private <code>.env</code> file that is never uploaded to GitHub; the browser never sees an AI key.</li>
+  <li><b>AI safety</b>: uploaded material is passed to the AI as data, with instructions to never follow commands found inside it.</li>
+  <li><b>Account tools</b>: password reset, download my data, delete my account, terms and privacy pages, and a support inbox.</li>
+</ul>
+
+<h2 id="fast"><span class="n">10</span>Speed, phones and many users</h2>
+<h3>Phones</h3>
+<ul>
+  <li>Phones automatically use a lighter graphics mode: no full-screen bloom glow, fewer background layers, fewer particles, lighter character textures and no scanline overlay.</li>
+  <li>The game is capped at 60 frames per second (many phones have 120 Hz screens, which doubled the work).</li>
+  <li>Only stations near the screen are drawn; the lobby's animated stage pauses when it is off-screen or hidden.</li>
+  <li>The fight display updates about 15 times a second and only when a value changes.</li>
+  <li>Menus stay upright (portrait) with the ranger on top; the game turns sideways (landscape) for play, with see-through touch buttons laid out like a mobile game.</li>
+</ul>
+<h3>Many users at once</h3>
+<ul>
+  <li>Game files are compressed (gzip, about 70% smaller) and cached by the browser, so returning visits load faster.</li>
+  <li>The database uses a pool of 8 connections so many requests run side by side.</li>
+  <li>Game building waits in a line, reuses identical games, and spreads AI calls across 4 Gemini keys plus Groq and OpenRouter.</li>
+  <li>A load test of 40 simultaneous users sending 400 requests passed with no errors.</li>
+</ul>
+
+<h2 id="timeline"><span class="n">11</span>How it was built, step by step</h2>
+<div class="timeline">
+  <div><b>1. First version</b>Upload to game pipeline, the game engine, accounts, tests, and the first deployment to Render.</div>
+  <div><b>2. Permanent storage</b>Moved the online database to Neon PostgreSQL because the free server forgets its disk on restart.</div>
+  <div><b>3. Teaching first</b>After playing for half an hour, Adarsh found too many questions and too little teaching. Lessons became 4 mentors plus 2 knowledge tablets per chapter (about 60% teaching), and questions are now written only from what was taught.</div>
+  <div><b>4. Combat and Arc Search</b>Added real-time fights with many techniques, and the Arc Search assistant with live sources.</div>
+  <div><b>5. Design rounds</b>Two dashboard redesigns (glass style, then business style) were rejected as not feeling like a game. The final design is an upgraded neon game lobby with a living stage.</div>
+  <div><b>6. Full coverage</b>Every word of the upload is now taught, with a coverage check that adds extra lessons for anything missed.</div>
+  <div><b>7. Big upgrade</b>Mature characters and dangerous enemies, wave fights with champions, Snake and Hill Climb mini-games, the full rewards system, and mobile layout fixes.</div>
+  <div><b>8. Real-world fixes</b>Fixed an upload crash, removed the daily limit, let Gemini read scanned PDFs, handled phone cloud files, and fixed phone orientation.</div>
+  <div><b>9. Speed and scale</b>Phone performance mode, build queue, shared game cache, quick-mode backup, compression, database pool, and spreading AI calls over several keys (a build went from about 4½ to about 2¾ minutes for the same file).</div>
+  <div><b>10. Final structure</b>Real chapters (at least 2), three mini-games in every chapter, a different world and fight per chapter, and the game unlocks only when all chapters are ready.</div>
+</div>
+
+<h2 id="problems"><span class="n">12</span>Problems we hit, and how they were solved</h2>
+<div class="tablewrap"><table>
+<thead><tr><th>Problem</th><th>Cause</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td>Free AI kept failing</td><td>Each free key has per-minute and daily limits; some models get overloaded</td><td>An AI router with automatic failover, several keys, waiting and retrying, and a quick-mode backup</td></tr>
+<tr><td>Data disappeared</td><td>Render's free disk is wiped on restart</td><td>Moved to Neon PostgreSQL</td></tr>
+<tr><td>Uploads crashed on some files</td><td>A bug when a short file split into exactly two parts</td><td>Fixed the splitting code and added tests for many file sizes</td></tr>
+<tr><td>"Needs a Claude key" on PDFs</td><td>Slide PDFs were treated as scanned, and only Claude could read scans</td><td>Use the PDF's text when it has real text; send real scans to Gemini</td></tr>
+<tr><td>Word file showed 0 KB on a phone</td><td>The file was still in Google Drive, not downloaded</td><td>A clear message telling the student to download it first</td></tr>
+<tr><td>Game lagged on phones</td><td>Full-screen glow effects, too many layers, 120 Hz screens, constant screen updates</td><td>Lighter phone mode, 60 fps cap, drawing only what is visible</td></tr>
+<tr><td>Mini-games missing</td><td>The question checker sometimes removed all of a mini-game's questions</td><td>Mini-games borrow other questions from the chapter, so they are never dropped</td></tr>
+<tr><td>Only one chapter for small files</td><td>Chapters were cut every 450 words</td><td>Chapters of about 220 words, at least 2 per game</td></tr>
+<tr><td>Slow game building</td><td>Every AI call went to the same key and steps ran one by one</td><td>Calls spread across keys, independent steps run in parallel</td></tr>
+</tbody></table></div>
+
+<h2 id="tests"><span class="n">13</span>Testing and deployment</h2>
+<p>There are 7 automated test suites (about 160 checks) that run in seconds without using real AI credits. They use stand-in AI services to test:</p>
+<ul>
+  <li><b>File reading</b> (<code>test_ingest.py</code>): PDFs, Word, PowerPoint and text.</li>
+  <li><b>AI failover</b> (<code>test_ai_path.py</code>): rate limits, bad answers, rejected keys and quick-mode backup.</li>
+  <li><b>Game building</b> (<code>test_generation.py</code>): full coverage and chapter splitting.</li>
+  <li><b>The platform</b> (<code>test_platform.py</code>): accounts, privacy between students, mastery, roadmap and limits. It also runs against a real PostgreSQL database.</li>
+  <li><b>Rewards</b> (<code>test_rewards.py</code>), <b>mastery maths</b> (<code>test_mastery.py</code>) and <b>scale</b> (<code>test_scale.py</code>): the build queue, game cache, compression and 40 simultaneous users.</li>
+</ul>
+<p>Every change was also checked in a real browser at PC, Windows-scaled and phone sizes before release.</p>
+<p><b>Deployment flow:</b> code is committed with Git, pushed to GitHub, and Render rebuilds and restarts the live app automatically within about a minute. A deploy script also copies the private keys from <code>.env</code> into Render's settings without printing them.</p>
+
+<h2 id="limits"><span class="n">14</span>Honest limits and next steps</h2>
+<ul>
+  <li><b>Free server sleeps</b> after 15 minutes without visitors, so the first visit takes 20 to 60 seconds. Render's paid plan (about $7 a month) removes this and gives more power for a big launch.</li>
+  <li><b>Free AI limits</b>: on very busy days building is slower. More free keys (extra Gemini accounts, Cerebras, Mistral) or one paid key would remove most waiting.</li>
+  <li><b>Build time</b>: about 2 to 5 minutes for a small PDF, depending on how many chapters it has and how busy the AI services are.</li>
+  <li><b>Not yet tested on many real phones</b>; phone sizes were tested in a desktop browser.</li>
+  <li><b>Possible next steps</b>: teacher dashboards for classes, multiplayer quiz battles, more worlds, offline play, and native app-store versions.</li>
+</ul>
+
+<h2 id="mentor"><span class="n">15</span>Questions a mentor may ask</h2>
+<dl class="qa">
+  <dt>How do you stop the AI from making things up?</dt>
+  <dd>Four layers: the AI is told to use only the uploaded material; questions are written only from the lessons; a second AI pass re-answers every question; and a search-based grounding check removes any question the original text does not support.</dd>
+  <dt>How do you know all of the material is taught?</dt>
+  <dd>The text is split so every word belongs to one chapter, and a coverage check compares the lessons against the original. Below 92% coverage, an extra lesson is written for the missing parts.</dd>
+  <dt>Why not one big AI call for the whole game?</dt>
+  <dd>Free AI services have size and time limits, and one failure would ruin the whole game. Small, checked steps can be retried, run in parallel and moved to another AI service.</dd>
+  <dt>Why Python and plain JavaScript instead of popular frameworks?</dt>
+  <dd>Fewer dependencies mean fewer things to break, faster loading on phones, and a free server can run it easily. The whole server needs only 3 outside packages.</dd>
+  <dt>How does it handle many students at once?</dt>
+  <dd>A build queue, a shared cache of finished games, compressed and cached files, a database connection pool, and AI calls spread over several keys. A load test with 40 simultaneous users passed.</dd>
+  <dt>What happens if the AI is completely down?</dt>
+  <dd>The app still builds a playable quick version from the text, and Arc Search answers directly from the notes or Wikipedia.</dd>
+  <dt>How is student data protected?</dt>
+  <dd>Hashed passwords, secure cookies, strict ownership checks on every request, escaping of all displayed text, rate limits, and AI keys kept only on the server.</dd>
+</dl>
+
+<h2 id="words"><span class="n">16</span>Glossary</h2>
+<dl class="gloss">
+  <dt>AI model / LLM</dt><dd>A large language model, the kind of AI that reads and writes text (Gemini, Claude, Llama).</dd>
+  <dt>API</dt><dd>A way for programs to talk to each other. The browser talks to the server's API; the server talks to the AI services' APIs.</dd>
+  <dt>API key</dt><dd>A secret password that lets the app use an AI service.</dd>
+  <dt>Rate limit / quota</dt><dd>The maximum number of AI requests a key may make per minute or per day.</dd>
+  <dt>Failover</dt><dd>Switching automatically to a backup service when one fails.</dd>
+  <dt>Pipeline</dt><dd>A fixed sequence of steps that turns input (notes) into output (a game).</dd>
+  <dt>JSON schema</dt><dd>A strict template the AI's answer must match, so the server can check it.</dd>
+  <dt>BM25</dt><dd>A classic search-ranking formula that scores how well a passage matches a question.</dd>
+  <dt>Grounding</dt><dd>Checking that every generated fact can be found in the source material.</dd>
+  <dt>Phaser / WebGL</dt><dd>Phaser is the game engine; WebGL is the browser feature that lets it use the graphics card.</dd>
+  <dt>PWA</dt><dd>Progressive Web App: a website that can be installed and opened like a phone app.</dd>
+  <dt>Service worker</dt><dd>A small background script that lets the app open quickly and work while the server wakes up.</dd>
+  <dt>Database / PostgreSQL</dt><dd>Where accounts, games and progress are stored permanently.</dd>
+  <dt>Deployment</dt><dd>Putting a new version of the app online.</dd>
+  <dt>Git / commit</dt><dd>Git records every change to the code; a commit is one saved change with a message.</dd>
+  <dt>Cache</dt><dd>Keeping a copy of something so it does not need to be fetched or made again.</dd>
+</dl>
+
+<footer>ARCANA AI, created by Adarsh Menon. Built with Claude Code (Anthropic). Facts on this page reflect the project as of 9 October 2026.</footer>
+</main>
+</div>

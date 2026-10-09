@@ -240,7 +240,8 @@ class World extends Phaser.Scene {
     } else this.hero.root.setPosition(this.hx, this.hy + 6).setScale(this.face * this.hero.scale, this.hero.scale);
     this.shadow.setPosition(this.hx, GROUND + 4).setScale(1 - Math.min(0.5, (GROUND - this.hy) / 300), 1);
     if (this.mode !== "title") this.hero.update(dt, time, { vx: this.vx, vy: this.vy, grounded: this.onGround });
-    for (const e of this.entities) e.upd(dt, time);
+    const cx = this.camX + W / 2;                              // only stations near the screen are drawn and animated (big saving on phones)
+    for (const e of this.entities) { const near = Math.abs(e.x - cx) < W * 0.85; if (!e.root.scene) continue; if (e.root.visible !== near && !e.hidden) e.root.setVisible(near); if (near) e.upd(dt, time); }
   }
 
   stepPlay(dt, time) {
@@ -448,7 +449,7 @@ async function playChapter(scene, ch, idx, total, at = 0) {
     sc.splice(Math.max(1, n1 + 1), 0, e1); sc.splice(sc.length - 1, 0, e2);
   }
   G.ch = ch; G.done = at; G.total = ch.scenes.length; G.chapterMistakes = 0; G.chapterIdx = idx;
-  await UI.wipe(async () => { UI.hideTitle(); scene.build(ch); if (at) { scene.entities.slice(0, at).forEach((e) => e.root.setVisible(false)); scene.hx = scene.entities[at].stopX - 420; scene.camX = scene.hx - 440; scene.orbs.forEach((o) => (o.got = true, o.g.setVisible(false))); } refreshHud(); });
+  await UI.wipe(async () => { UI.hideTitle(); scene.build(ch); if (at) { scene.entities.slice(0, at).forEach((e) => { e.hidden = true; e.root.setVisible(false); }); scene.hx = scene.entities[at].stopX - 420; scene.camX = scene.hx - 440; scene.orbs.forEach((o) => (o.got = true, o.g.setVisible(false))); } refreshHud(); });
   await UI.chapterCard({ kicker: ch.id === "final" ? "Final stage" : `Chapter ${idx + 1} of ${total - 1}`, title: ch.title, sub: ch.goal });
   if (idx === 0) UI.hint(true, `<span><span class="kc">A</span><span class="kc">D</span>Move</span><span><span class="kc">W</span>Jump</span><span><span class="kc">SHIFT</span>Sprint</span><span><span class="kc">E</span>Interact</span>`);
   for (let i = at; i < ch.scenes.length; i++) {

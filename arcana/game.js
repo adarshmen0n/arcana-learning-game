@@ -518,6 +518,14 @@ async function main(scene) {
   await ending();
 }
 
+// phones: one tap goes full screen and turns the game sideways (Android; on iPhone the player rotates by hand)
+async function goLandscape() {
+  try { if (!document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: "hide" }); } catch (e) {}
+  try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock("landscape"); } catch (e) {}
+}
+{ const b = document.getElementById("gofull"); if (b) b.onclick = goLandscape; }
+if (matchMedia("(pointer: coarse)").matches) addEventListener("pointerdown", () => { if (!document.fullscreenElement && matchMedia("(orientation: landscape)").matches) goLandscape(); }, { once: true });
+
 // touch controls
 if (matchMedia("(pointer: coarse)").matches) {
   UI.touch(true);
@@ -530,6 +538,6 @@ if (matchMedia("(pointer: coarse)").matches) {
 (async () => {
   try { await Promise.race([Promise.all([document.fonts.load('900 20px Orbitron'), document.fonts.load('700 20px Rajdhani')]), new Promise((r) => setTimeout(r, 2500))]); } catch (e) {}
   try { await Promise.race([loadHero(), new Promise((r) => setTimeout(r, 2500))]); } catch (e) {}   // the ranger's suit and trim
-  const game = new Phaser.Game({ type: Phaser.AUTO, parent: "game", width: W, height: H, backgroundColor: "#000", scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [World, MazeScene, ShooterScene, SnakeScene, HillScene], render: { antialias: !Art.LOW, powerPreference: "high-performance" }, fps: { target: 60, smoothStep: true }, disableContextMenu: true });
+  const game = new Phaser.Game({ type: Phaser.AUTO, parent: "game", width: W, height: H, backgroundColor: "#000", scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [World, MazeScene, ShooterScene, SnakeScene, HillScene], render: { antialias: true, antialiasGL: !Art.LOW, powerPreference: "high-performance" }, fps: { target: 60, smoothStep: true }, disableContextMenu: true });
   window.__arcana = { game, G, V };
 })();

@@ -6,7 +6,7 @@ const Lobby = (() => {
   class LobbyScene extends Phaser.Scene {
     constructor() { super("lobby"); }
     create() {
-      sc = this; this.camX = 0; this.objs = []; this.layers = []; this.timer = 2.2; this.busy = false; this.heroX = W * 0.6; this.targetX = W * 0.6;
+      sc = this; this.camX = 0; this.objs = []; this.layers = []; this.timer = 2.2; this.busy = false; this.heroX = this.targetX = W * (innerWidth < 900 ? 0.5 : 0.6);   // phones: the ranger stands in the middle of the top banner
       People.props(this);
       this.applyTheme(want.theme); this.applyHero(want.gender);
       this.cameras.main.postFX && this.renderer.type === Phaser.WEBGL && !Art.LOW && (this.cameras.main.postFX.addVignette(0.5, 0.5, 0.95, 0.35), this.cameras.main.postFX.addBloom(0xffffff, 1, 1, 1.0, 0.6, 4));
@@ -56,7 +56,7 @@ const Lobby = (() => {
   function start(parent, opts) {
     want = { ...want, ...opts };
     if (game) { sc && (sc.applyHero(want.gender)); return; }
-    game = new Phaser.Game({ type: Phaser.AUTO, parent, width: W, height: H, transparent: false, backgroundColor: "#020503", scale: { mode: Phaser.Scale.ENVELOP, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [LobbyScene], render: { antialias: !Art.LOW, powerPreference: Art.LOW ? "low-power" : "default" }, fps: { target: Art.LOW ? 30 : 60 }, audio: { noAudio: true } });
+    game = new Phaser.Game({ type: Phaser.AUTO, parent, width: W, height: H, transparent: false, backgroundColor: "#020503", scale: { mode: Phaser.Scale.ENVELOP, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [LobbyScene], render: { antialias: true, antialiasGL: !Art.LOW, powerPreference: Art.LOW ? "low-power" : "default" }, fps: { target: Art.LOW ? 30 : 60 }, audio: { noAudio: true } });
   }
   function celebrate() {                                   // level up / reward: burst of light and a victory pose
     if (!sc || !sc.rig) return; const s = sc, x = s.heroX, y = GROUND - 120, col = Phaser.Display.Color.HexStringToColor(People.SPECS.hero_m.glow || "#39ff14").color;

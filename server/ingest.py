@@ -108,7 +108,7 @@ def extract(filename: str, data: bytes) -> dict:
     if ext == "pdf":
         text, pages = _pdf(data)
         info["pages"] = pages
-        if len(text.strip()) < 40 * max(1, pages):   # almost no text layer: scanned PDF
+        if len(text.split()) < 120 and len(text.strip()) < 40 * max(1, pages):   # almost no text layer: scanned PDF (slides with some text still count as text)
             info.update(text="", needs_ocr=True, mime="application/pdf")
             return info
     elif ext == "docx":

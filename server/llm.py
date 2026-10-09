@@ -5,6 +5,7 @@ never leave this process.
 Claude uses the official Anthropic SDK (structured outputs, prompt caching, web search, PDF reading).
 Every other service speaks the OpenAI-compatible chat API and is called over plain HTTPS."""
 import base64
+import io
 import http.client
 import json
 import os
@@ -254,6 +255,21 @@ class AnthropicProvider(Provider):
         return "".join(b.text for b in r.content if b.type == "text").strip()
 
 
+def pdf_page_images(data, limit=30):
+    """The picture on each page of a scanned PDF (scanners store one image per page). [(bytes, mime), ...]"""
+    try:
+        from pypdf import PdfReader
+        out = []
+        for page in PdfReader(io.BytesIO(data)).pages[:limit]:
+            imgs = sorted(page.images, key=lambda im: len(im.data), reverse=True)
+            if imgs:
+                name = imgs[0].name.lower()
+                out.append((imgs[0].data, "image/png" if name.endswith(".png") else "image/jpeg"))
+        return out
+    except Exception:
+        return []
+
+
 TRANSCRIBE_PROMPT = ("Transcribe all the study content in this file as clean text. Keep headings (prefix with '# '), lists and tables readable. "
                      "Describe diagrams in one sentence each in [brackets]. Output only the transcription.")
 
@@ -265,7 +281,7 @@ COMPAT = {
     "openai": ("https://api.openai.com/v1", ("OPENAI_API_KEY",), "OPENAI_MODEL", ["gpt-4o-mini", "gpt-4.1-mini", "mini"], 200_000, 16000, True, True),
     "groq": ("https://api.groq.com/openai/v1", ("GROQ_API_KEY",), "GROQ_MODEL", ["gpt-oss-120b", "llama-3.3-70b", "qwen3", "gpt-oss-20b", "llama", "qwen"], 18_000, 6000, False, True),
     "cerebras": ("https://api.cerebras.ai/v1", ("CEREBRAS_API_KEY",), "CEREBRAS_MODEL", ["gpt-oss-120b", "llama-3.3-70b", "llama3.3-70b", "qwen", "llama"], 22_000, 6000, False, True),
-    "openrouter": ("https://openrouter.ai/api/v1", ("OPENROUTER_API_KEY",), "OPENROUTER_MODEL", [":free"], 60_000, 16000, False, False),
+    "openrouter": ("https://openrouter.ai/api/v1", ("OPENROUTER_API_KEY",), "OPENROUTER_MODEL", [":free"], 60_000, 16000, True, False),   # vision via the free Gemma 4 models
 }
 DEFAULT_ORDER = ["claude", "gemini", "mistral", "deepseek", "openai", "groq", "cerebras", "openrouter", "custom", "ollama"]
 
@@ -299,6 +315,7 @@ class CompatProvider(Provider):
         super().__init__()
         self.name, self.base, self.key, self.model_env, self.prefer = label or name, base.rstrip("/"), key, model_env, prefer
         self.max_chars, self.out_cap, self.vision, self.json_mode = max_chars, out_cap, vision, json_mode
+        self.pdf = vision                                    # PDFs: Gemini reads them whole, other vision models page by page
         self.model = os.environ.get(model_env) if model_env else None
         self.no_json = False
         self.bad = set()
@@ -375,6 +392,39 @@ class CompatProvider(Provider):
         except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException, json.JSONDecodeError, OSError) as e:   # dropped or truncated connections are retried
             raise Skip("cannot reach the service", cooldown=20)
 
+    VISION_FREE = ["google/gemma-4-31b-it:free", "google/gemma-4-26b-a4b-it:free", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"]
+
+    def vision_model(self):
+        """OpenRouter: the first free model that can see images (its text models cannot)."""
+        for m in self.VISION_FREE:
+            if m not in self.bad:
+                return m
+        raise Skip("no free image model available right now", cooldown=300)
+
+    def _gemini_pdf(self, data, tally):
+        """Gemini's own API reads a whole PDF (text, slides and scans) in one call."""
+        model = self.resolve_model()
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        body = {"contents": [{"parts": [{"inline_data": {"mime_type": "application/pdf", "data": base64.standard_b64encode(data).decode("ascii")}}, {"text": TRANSCRIBE_PROMPT}]}],
+                "generationConfig": {"maxOutputTokens": 32000}}
+        req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers={"Content-Type": "application/json", "x-goog-api-key": self.key})
+        try:
+            with urllib.request.urlopen(req, timeout=300) as r:
+                out = json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            text = e.read().decode("utf-8", "ignore")[:600].lower()
+            if e.code in (401, 403):
+                raise Skip("key rejected", fatal=True)
+            if e.code == 429 or "quota" in text:
+                raise Skip("rate limited / quota used", cooldown=_retry_after(e.headers, text))
+            raise Skip(f"HTTP {e.code}", cooldown=20 if e.code >= 500 else 0)
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException, OSError):
+            raise Skip("cannot reach the service", cooldown=20)
+        u = out.get("usageMetadata") or {}
+        _track(tally, u.get("promptTokenCount", 0), u.get("candidatesTokenCount", 0))
+        parts = ((out.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
+        return "".join(p.get("text", "") for p in parts).strip()
+
     def _post_any_model(self, body):
         """Post; if the chosen model is busy or retired, pick the next usable model and try again (a few times)."""
         for n in range(4):
@@ -439,9 +489,16 @@ class CompatProvider(Provider):
         return text
 
     def transcribe(self, data, mime, tally):
-        if not self.vision or mime == "application/pdf":
+        if not self.vision:
             raise Skip("cannot read this file type")
-        model = self.resolve_model()
+        if mime == "application/pdf":
+            if self.name.startswith("gemini") and len(data) < 14_000_000:
+                return self._gemini_pdf(data, tally)
+            pages = pdf_page_images(data)
+            if not pages:
+                raise Skip("this PDF has no page images to read", cooldown=0)
+            return "\n\n".join(t for t in (self.transcribe(img, m, tally) for img, m in pages) if t)
+        model = self.vision_model() if self.name.startswith("openrouter") else self.resolve_model()
         url = f"data:{mime};base64," + base64.standard_b64encode(data).decode("ascii")
         r = self._post({"model": model, "max_tokens": min(8000, self.out_cap), "messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": url}}, {"type": "text", "text": TRANSCRIBE_PROMPT}]}]})
         u = r.get("usage") or {}
@@ -556,5 +613,5 @@ def research(query: str, *, tally=None, log=None) -> dict:
 def transcribe(data: bytes, mime: str, *, tally=None, log=None) -> str:
     need = "pdf" if mime == "application/pdf" else "vision"
     if not any(getattr(p, need, False) and p.dead is None for p in PROVIDERS):
-        raise LLMError("Reading scanned PDFs needs a Claude key; reading images needs Claude, Gemini or OpenAI." if need == "pdf" else "Reading images needs a Claude, Gemini or OpenAI key.")
+        raise LLMError("This file is scanned pages or pictures, and reading those needs a Gemini, Groq, OpenAI or Claude key on the server." )
     return _route(lambda p: p.transcribe(data, mime, tally), 0, need=need, log=log)

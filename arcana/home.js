@@ -448,6 +448,10 @@ function wireUpload() {
   drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); };
   $("#go").onclick = async () => {
     const text = $("#paste").value.trim();
+    if (file && file.size === 0) {                      // phones show cloud files (Drive, OneDrive) as 0 KB until they are downloaded
+      if (text.length >= 200) file = null;
+      else return ($("#msg").innerHTML = '<div class="err">That file shows as 0 KB, so the phone has not downloaded it yet (it is probably in Google Drive or OneDrive). Open it there, choose Download, then pick it again from Downloads. Or paste the text below.</div>');
+    }
     if (!file && text.length < 200) return ($("#msg").innerHTML = '<div class="err">Choose a file or paste at least a few paragraphs.</div>');
     if (file && file.size > 25 * 1024 * 1024) return ($("#msg").innerHTML = '<div class="err">That file is over 25 MB.</div>');
     $("#go").disabled = true; $("#msg").innerHTML = "";

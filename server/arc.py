@@ -42,6 +42,24 @@ def sources_md(cited):
     return "\n\n**Sources:** " + " · ".join(f"[{n}] [{w['title']}]({w['url']})" for n, w in cited) if cited else ""
 
 
+def _sentences(text, n):
+    parts = re.split(r"(?<=[.!?])\s+", re.sub(r"\s+", " ", text or "").strip())
+    return " ".join(p for p in parts[:n] if p)
+
+
+def _direct(message, notes, web):
+    """A no-AI answer for busy moments: the best matching passage from the student's notes, then what the live sources say."""
+    out = []
+    if notes:
+        out.append("**From your notes:** " + _sentences(notes, 4))
+    for i, w in enumerate(web[:3]):
+        if w.get("content"):
+            out.append(f"**{w['title']}:** {_sentences(w['content'], 3)} [{i + 1}]")
+    if not out:
+        return ""
+    return "_The AI tutor is busy for a minute, so here is what I found directly. Ask again shortly for a full explanation._\n\n" + "\n\n".join(out)
+
+
 def ask(user, message, game_id=None, context=None):
     """Store the question, gather notes and live web results, get the answer, store it. Returns {answer, notesUsed, sources}."""
     uid, gid = user["id"], game_id or ""
@@ -72,7 +90,12 @@ def ask(user, message, game_id=None, context=None):
         system += "\n\n<web_results>\n" + "\n\n".join(f"[{i + 1}] {w['title']} ({w['url']})\n{w['content']}" for i, w in enumerate(web)) + "\n</web_results>"
     msgs = [{"role": m["role"], "content": m["content"][:4000]} for m in past if m["role"] in ("user", "assistant")]
     msgs.append({"role": "user", "content": message})
-    answer = llm.chat(system, msgs, max_tokens=1800)
+    try:
+        answer = llm.chat(system, msgs, max_tokens=1800)
+    except llm.LLMError:
+        answer = _direct(message, notes, web)                # every AI service is busy: answer straight from the notes or the live sources
+        if not answer:
+            raise
     answer = re.sub("[\u3010\uff3b]([0-9]{1,2})[\u3011\uff3d]", lambda m: "[" + m.group(1) + "]", answer)   # some models cite as 【1】; normalise to [1]
     cited = [(i + 1, w) for i, w in enumerate(web) if f"[{i + 1}]" in answer]
     stored = answer + sources_md(cited)

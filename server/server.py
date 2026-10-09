@@ -110,7 +110,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except OSError:
             return super().do_GET()
         name = os.path.basename(path)
-        self.cache_rule = "no-cache" if name.endswith((".html", ".webmanifest")) or name == "sw.js" else "public, max-age=300, stale-while-revalidate=86400"
+        self.cache_rule = "public, max-age=86400" if name.endswith((".png", ".webp", ".jpg", ".ico", ".woff2")) else "no-cache"   # code is always checked (a cheap 304 when unchanged), so a deploy never mixes old and new files
         if self.headers.get("If-None-Match") == etag:
             self.send_response(304)
             self.send_header("ETag", etag)
@@ -149,4 +149,8 @@ if __name__ == "__main__":
     host = os.environ.get("HOST") or ("0.0.0.0" if os.environ.get("PORT") else "127.0.0.1")
     handler = functools.partial(Handler, directory=str(WEB))
     print(f"Arcana on http://{host}:{port}  |  AI: {'ON (' + llm.label() + ')' if llm.available() else 'OFF (offline mode; add keys to .env)'}  |  hosted={config.HOSTED}", flush=True)
+    import pipeline  # noqa: E402
+    n = pipeline.resume_unfinished()
+    if n:
+        print(f"Resumed {n} game build(s) interrupted by the restart", flush=True)
     Server((host, port), handler).serve_forever()

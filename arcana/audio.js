@@ -1,10 +1,13 @@
 // Synthesised arcade SFX + a soft generative music bed (no audio files). Starts on first user gesture.
 const Sound = (() => {
-  let ctx = null, master = null, musicBus = null, muted = false, musicTimer = null, mood = "forest";
+  let ctx = null, master = null, musicBus = null, muted = false, musicTimer = null, mood = "forest", held = false;
+  // the app in the background, minimised or closed: no sound keeps playing
+  document.addEventListener("visibilitychange", () => { if (!ctx) return; if (document.hidden) ctx.suspend(); else if (!held) ctx.resume(); });
+  addEventListener("pagehide", () => { try { if (ctx) ctx.close(); } catch (e) {} ctx = null; });
   const MOODS = { forest: [[220, 277, 330], [196, 247, 294], [175, 220, 262], [196, 247, 330]], cave: [[174, 208, 262], [155, 196, 233], [165, 208, 247], [147, 185, 220]], volcano: [[110, 165, 207], [98, 147, 185], [104, 156, 196], [92, 138, 175]] };
 
   function init() {
-    if (ctx) { if (ctx.state === "suspended") ctx.resume(); return; }
+    if (ctx) { if (ctx.state === "suspended" && !held && !document.hidden) ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
     ctx = new AC(); master = ctx.createGain(); master.gain.value = muted ? 0 : 0.8; master.connect(ctx.destination);
     musicBus = ctx.createGain(); musicBus.gain.value = 0.5; musicBus.connect(master); startMusic();
@@ -32,6 +35,7 @@ const Sound = (() => {
   }
   const bus = { init, setMood(m) { mood = m; },
     toggle() { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.8; return muted; }, isMuted: () => muted,
+    pause() { held = true; if (ctx && ctx.state === "running") ctx.suspend(); }, resume() { held = false; if (ctx && ctx.state === "suspended" && !document.hidden) ctx.resume(); },
     hover: () => tone(1400, 0.04, { vol: 0.04, type: "square" }),
     click: () => { tone(660, 0.07, { vol: 0.09 }); tone(990, 0.09, { vol: 0.07, delay: 0.05 }); },
     open: () => { tone(300, 0.2, { type: "sawtooth", vol: 0.06, slide: 500 }); noise(0.18, 0.05, 2400); },

@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS games(id TEXT PRIMARY KEY, owner_id INTEGER REFERENCE
 CREATE TABLE IF NOT EXISTS scripts(id TEXT PRIMARY KEY, body TEXT NOT NULL, created INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS sources(game_id TEXT PRIMARY KEY, body TEXT NOT NULL, created INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS script_cache(hash TEXT PRIMARY KEY, game_id TEXT NOT NULL, created INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS build_jobs(id TEXT PRIMARY KEY, body TEXT NOT NULL, updated INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS arc_messages(id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL DEFAULT '', role TEXT NOT NULL, content TEXT NOT NULL, created INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS arc_user ON arc_messages(user_id, game_id, id);
 CREATE TABLE IF NOT EXISTS reports(id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, qid TEXT NOT NULL, reason TEXT, created INTEGER NOT NULL);
@@ -59,6 +60,7 @@ PG_SCHEMA = [
     "CREATE TABLE IF NOT EXISTS scripts(id TEXT PRIMARY KEY, body TEXT NOT NULL, created BIGINT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS sources(game_id TEXT PRIMARY KEY, body TEXT NOT NULL, created BIGINT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS script_cache(hash TEXT PRIMARY KEY, game_id TEXT NOT NULL, created BIGINT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS build_jobs(id TEXT PRIMARY KEY, body TEXT NOT NULL, updated BIGINT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS arc_messages(id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL DEFAULT '', role TEXT NOT NULL, content TEXT NOT NULL, created BIGINT NOT NULL)",
     "CREATE INDEX IF NOT EXISTS arc_user ON arc_messages(user_id, game_id, id)",
     "CREATE TABLE IF NOT EXISTS reports(id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, qid TEXT NOT NULL, reason TEXT, created BIGINT NOT NULL)",
@@ -203,6 +205,19 @@ def run(sql, args=()):
 # ---------------------------------------------------------------- generated game scripts (kept in the database so they survive restarts)
 def save_script(sid, obj):
     run("INSERT INTO scripts(id,body,created) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body", (sid, json.dumps(obj, ensure_ascii=False), int(time.time())))
+
+
+def job_save(jid, body):
+    run("INSERT INTO build_jobs(id,body,updated) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body, updated=excluded.updated", (jid, json.dumps(body, ensure_ascii=False), int(time.time())))
+
+
+def job_drop(jid):
+    run("DELETE FROM build_jobs WHERE id=?", (jid,))
+
+
+def jobs_unfinished(max_age=6 * 3600):
+    """Builds that were running when the server stopped (younger than 6 hours)."""
+    return [(r["id"], json.loads(r["body"])) for r in q("SELECT id, body FROM build_jobs WHERE updated>?", (int(time.time()) - max_age,))]
 
 
 def cache_put(h, game_id):

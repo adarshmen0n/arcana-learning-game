@@ -17,11 +17,21 @@ class ArcadeBase extends Phaser.Scene {
   }
   header(kicker, question) {
     const { W, FONT, BODY } = ARC;
-    this.add.text(40, 22, kicker, { fontFamily: FONT, fontSize: "16px", color: "#39ff14", letterSpacing: 6 }).setAlpha(0.9);
-    this.qText = this.add.text(W / 2, 62, question, { fontFamily: BODY, fontSize: "26px", fontStyle: "700", color: "#e8ffe0", align: "center", wordWrap: { width: 980 } }).setOrigin(0.5, 0.5);
-    this.scoreText = this.add.text(W - 40, 22, "", { fontFamily: FONT, fontSize: "20px", color: "#39ff14" }).setOrigin(1, 0);
+    this.add.text(40, 10, kicker, { fontFamily: FONT, fontSize: "13px", color: "#39ff14", letterSpacing: 5 }).setAlpha(0.9).setDepth(42);
+    this.qBack = this.add.graphics().setDepth(40);           // the question sits on its own panel above the game, so the board can never cover it
+    this.qText = this.add.text(W / 2, 70, question, { fontFamily: BODY, fontSize: "26px", fontStyle: "700", color: "#e8ffe0", align: "center", wordWrap: { width: 1040 } }).setOrigin(0.5, 0.5).setDepth(41);
+    this.scoreText = this.add.text(W - 40, 8, "", { fontFamily: FONT, fontSize: "17px", color: "#39ff14" }).setOrigin(1, 0).setDepth(42);
   }
-  setQuestion(t) { this.qText.setText(t); this.tweens.add({ targets: this.qText, alpha: { from: 0, to: 1 }, duration: 300 }); }
+  setQuestion(t) {
+    const q = this.qText;
+    for (const size of [26, 23, 20, 18, 16]) {             // shrink long questions until they fit in two or three lines
+      q.setFontSize(size + "px").setText(t);
+      if (q.height <= 62) break;
+    }
+    const h = Math.max(40, q.height + 12);                  // the panel spans y 34-106; every game's board starts below it
+    this.qBack.clear().fillStyle(0x020a04, 0.92).fillRoundedRect(ARC.W / 2 - 560, 70 - h / 2, 1120, h, 10).lineStyle(1.5, ARC.G, 0.5).strokeRoundedRect(ARC.W / 2 - 560, 70 - h / 2, 1120, h, 10);
+    this.tweens.add({ targets: q, alpha: { from: 0, to: 1 }, duration: 300 });
+  }
   banner(text, color = "#39ff14", ms = 900) {
     const t = this.add.text(ARC.W / 2, ARC.H / 2, text, { fontFamily: ARC.FONT, fontSize: "64px", fontStyle: "900", color, stroke: "#000", strokeThickness: 8 }).setOrigin(0.5).setDepth(50).setAlpha(0);
     this.tweens.add({ targets: t, alpha: 1, scale: { from: 0.6, to: 1 }, duration: 220, yoyo: false, onComplete: () => this.tweens.add({ targets: t, alpha: 0, delay: ms, duration: 260, onComplete: () => t.destroy() }) });
@@ -332,7 +342,7 @@ class HillScene extends ArcadeBase {
     this.sky = this.add.graphics().setDepth(1); this.g = this.add.graphics().setDepth(5); this.fx = this.add.graphics().setDepth(8);
     this.round = 0; this.right = 0; this.wrong = 0; this.gates = []; this.zones = []; this.cans = []; this.gateTexts = [];
     this.car = { x: 200, y: 0, vx: 0, vy: 0, ang: 0, av: 0, ground: true, spin: 0 }; this.car.y = this.ty(200); this.fuel = 100; this.lastSafe = 200; this.camX = 0;
-    this.opts = this.add.text(W / 2, 108, "", { fontFamily: ARC.BODY, fontSize: "17px", fontStyle: "700", color: "#b6ffb0", align: "center", wordWrap: { width: 1180 } }).setOrigin(0.5, 0).setDepth(20);
+    this.opts = this.add.text(W / 2, 112, "", { fontFamily: ARC.BODY, fontSize: "17px", fontStyle: "700", color: "#b6ffb0", align: "center", wordWrap: { width: 1180 }, backgroundColor: "#020a04cc", padding: { x: 10, y: 4 } }).setOrigin(0.5, 0).setDepth(40);
     this.hud = this.add.text(40, H - 42, "", { fontFamily: ARC.FONT, fontSize: "15px", color: "#39ff14" }).setDepth(20);
     this.add.text(W - 40, H - 42, "D / RIGHT gas   A / LEFT brake   tilt in the air", { fontFamily: ARC.FONT, fontSize: "13px", color: "#7fa87a" }).setOrigin(1, 0).setDepth(20);
     this.fuelBar = this.add.graphics().setDepth(20); this.startRound(); this.syncScore();

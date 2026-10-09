@@ -153,7 +153,7 @@ class World extends Phaser.Scene {
       e.verb = "Play " + ARCADE_INFO[s.type].name; e.top = 400; e.stopX = x - 140; e.upd = (dt, t) => gl.setAlpha(0.28 + 0.14 * Math.sin(t * 0.005));
       add(this.label(root, (s.title || ARCADE_INFO[s.type].name).toUpperCase(), -345));
     } else {
-      const kind = s.boss.kind || "enforcer", sc = { enforcer: 1.5, colossus: 1.75, overlord: 1.9 }[kind] || 1.3, rig = People.make(this, kind, sc);
+      const kind = s.type === "final_boss" ? "doom" : s.boss.kind || "enforcer", sc = { enforcer: 1.5, colossus: 1.75, overlord: 1.9, doom: 1.85 }[kind] || 1.3, rig = People.make(this, kind, sc);
       rig.root.setScale(-sc, sc); add(rig.root); rig.guard = true; e.rig = rig; e.heavy = kind === "colossus"; e.sc = sc;
       e.c = { root: rig.root, update: (dt, t) => rig.update(dt, t, {}), flash: () => rig.flash(), robot: rig };
       e.upd = (dt, t) => rig.update(dt, t, {}); e.auto = true; e.stopX = x - 470; e.top = 175 * sc + 60; e.boss = true;
@@ -343,7 +343,11 @@ async function fightBoss(scene, ent, questions, passRatio, label) {
       UI.bossBar(true, { name: s.boss.name, pct: ((n - right) / n) * 100, left: `Question ${i + 1} / ${n}`, right: `Need ${need} correct` });
       const r = await UI.ask(qs[i], { explain: A().explainAlways, dock: true, eliminate: enchanted("insight") ? 1 : 0, counter: `${label} // question ${i + 1} of ${n}` });
       if (r.correct) { right++; gain(15); UI.bossBar(true, { name: s.boss.name, pct: ((n - right) / n) * 100, left: `Question ${i + 1} / ${n}`, right: `Need ${need} correct` }); await Fight.heroAttack(scene, ent); }
-      else { const out = hurt(scene, r.conceptId, true); await Fight.enemyAttack(scene, ent); if (out) { fainted = true; break; } }
+      else {
+        const out = hurt(scene, r.conceptId, true); await Fight.enemyAttack(scene, ent);
+        if (label === "Final boss") { if (i + 1 - right > n - need) break; }          // the final exam is decided by the 17-of-20 rule only; stop once it can no longer be reached
+        else if (out) { fainted = true; break; }
+      }
     }
     UI.bossBar(false);
     if (!fainted && right >= need) {
@@ -379,15 +383,54 @@ const ARCADE_INFO = {
 async function playArcade(scene, ent) {
   const s = ent.s, key = s.type, info = ARCADE_INFO[key];
   await UI.chapterCard({ kicker: "Arcade level", title: s.title || info.name, sub: info.sub });
-  Sound.setMood("volcano"); UI.hideHud();
+  Sound.setMood("volcano"); UI.hideHud(); document.body.classList.add("arcading");   // nothing from the world may cover the mini-game
   await new Promise((res) => {
     const data = { questions: s.questions, seed: (G.chapterIdx + 1) * 5 + 3, ghosts: s.ghosts || 2, maxHp: G.maxHp, getScore: () => G.score, getHp: () => G.hp,
       addScore: (n) => { G.score += n; refreshHud(); }, onRight: () => gain(20), onWrong: (q) => hurt(scene, q.conceptId, true), onHit: () => { UI.flash(); hurt(scene, null, true); },
       done: () => { scene.scene.stop(key); scene.scene.resume("world"); res(); } };
     scene.scene.pause("world"); scene.scene.launch(key, data);
   });
-  Sound.setMood(scene.theme.music); refreshHud();
+  document.body.classList.remove("arcading"); Sound.setMood(scene.theme.music); refreshHud();
 }
+// ------------------------------------------------------------------ pause menu: stop, save, leave
+const SAVE_KEY = () => "arcana_at_" + (G.gameId || Track.gameId || "");
+function saveSpot() {                                         // where the student is inside the chapter, so a later visit continues there
+  try { localStorage.setItem(SAVE_KEY(), JSON.stringify({ chapter: G.chapterIdx || 0, at: G.done || 0, t: Date.now() })); } catch (e) {}
+}
+function savedSpot(chapter) {
+  try { const v = JSON.parse(localStorage.getItem(SAVE_KEY()) || "null"); return v && v.chapter === chapter ? v.at || 0 : 0; } catch (e) { return 0; }
+}
+let pausedNow = false;
+async function saveAndLeave(close) {
+  saveSpot();
+  try { await Track.flush(); await Track.progress(G.chapterIdx || 0, false); } catch (e) {}
+  Sound.pause();
+  if (close) { window.close(); setTimeout(() => (location.href = "/"), 400); } else location.href = "/";
+}
+function pauseGame() {
+  if (pausedNow || !window.__arcana) return; pausedNow = true;
+  const g = __arcana.game, active = g.scene.getScenes(true).map((s) => s.sys.settings.key);
+  active.forEach((k) => g.scene.pause(k)); Sound.pause();
+  const box = document.createElement("div"); box.id = "pausebox";
+  box.innerHTML = `<div class="pb"><div class="k">PAUSED</div><h1>${UI.esc(G.ch ? G.ch.title : "ARCANA")}</h1><p class="muted">Your progress is saved to this step of the chapter. You can come back any time.</p>
+    <button class="btn primary" data-p="resume">Resume</button><button class="btn" data-p="lobby">Save and exit to lobby</button>
+    <button class="btn" data-p="sound">${Sound.isMuted() ? "Sound: off" : "Sound: on"}</button><button class="btn" data-p="close">Save and close the game</button></div>`;
+  document.getElementById("frame").appendChild(box);
+  const resume = () => { box.remove(); pausedNow = false; active.forEach((k) => g.scene.resume(k)); Sound.resume(); };
+  box.onclick = (e) => {
+    const b = e.target.closest("[data-p]"); if (!b) return;
+    if (b.dataset.p === "resume") resume();
+    else if (b.dataset.p === "sound") { const m = Sound.toggle(); b.textContent = m ? "Sound: off" : "Sound: on"; }
+    else saveAndLeave(b.dataset.p === "close");
+  };
+  box.querySelector("[data-p=resume]").focus();
+  box.addEventListener("keydown", (e) => { if (e.key === "Escape" || e.key === "p" || e.key === "P") { e.stopPropagation(); resume(); } });
+}
+addEventListener("keydown", (e) => { if (e.target.closest && e.target.closest("input,textarea,#arc")) return; if ((e.key === "Escape" || e.key === "p" || e.key === "P") && !pausedNow && G.ch) { e.preventDefault(); pauseGame(); } });
+document.addEventListener("click", (e) => { if (e.target.closest("#pausebtn")) pauseGame(); });
+document.addEventListener("visibilitychange", () => { if (document.hidden && G.ch) saveSpot(); });      // leaving the app keeps the spot too
+addEventListener("pagehide", () => { if (G.ch) saveSpot(); });
+
 const TEACHING = new Set(["npc", "tablet"]);
 // world variants: index 0 is the world as painted; later passes through the worlds use another time of day or weather
 const VARIANTS = [{}, { tint: 0xffb48a, weather: "embers" }, { tint: 0x8fa6ff, weather: "rain", flash: true }, { tint: 0xd8f0ff, weather: "snow" }, { tint: 0xc9a0ff }, { tint: 0xa8ffb0, weather: "rain" }, { tint: 0xff9a9a, weather: "embers" }];
@@ -407,7 +450,7 @@ async function runScene(scene, ch, ent, s) {
   else if (ARCADE_INFO[s.type]) await playArcade(scene, ent);
   else if (s.type === "combat") await playCombat(scene, ent);
   else if (s.type === "mini_boss") await fightBoss(scene, ent, pickQs(questionsOf(ch), clamp(Math.min(s.count, 5) + A().bossCountDelta, 3, 7)), clamp(0.6 + A().bossRatioDelta, 0.4, 0.85), "Mini-boss");
-  else if (s.type === "final_boss") await fightBoss(scene, ent, pickQs([...SCRIPT.chapters.flatMap(questionsOf), ...(SCRIPT.finalBoss.extraQuestions || [])], Math.min(s.count, 15)), clamp(s.passMarkRatio + A().bossRatioDelta, 0.5, 0.9), "Final boss");
+  else if (s.type === "final_boss") await fightBoss(scene, ent, pickQs([...SCRIPT.chapters.flatMap(questionsOf), ...(SCRIPT.finalBoss.extraQuestions || [])], 20), 0.85, "Final boss");   // the final exam: 20 questions, 17 right to win
 }
 
 // Personal review: when a topic keeps going wrong, the server writes a short extra lesson + fresh questions from the stored source.
@@ -448,13 +491,13 @@ async function playChapter(scene, ch, idx, total, at = 0) {
     const e1 = { type: "combat", id: ch.id + "-c1", enc: Combat.plan(ch, 0, A()) }, e2 = { type: "combat", id: ch.id + "-c2", enc: Combat.plan(ch, 1, A()) };
     sc.splice(Math.max(1, n1 + 1), 0, e1); sc.splice(sc.length - 1, 0, e2);
   }
-  G.ch = ch; G.done = at; G.total = ch.scenes.length; G.chapterMistakes = 0; G.chapterIdx = idx;
+  G.ch = ch; G.done = at; G.total = ch.scenes.length; G.chapterMistakes = 0; G.chapterIdx = idx; saveSpot();
   await UI.wipe(async () => { UI.hideTitle(); scene.build(ch); if (at) { scene.entities.slice(0, at).forEach((e) => { e.hidden = true; e.root.setVisible(false); }); scene.hx = scene.entities[at].stopX - 420; scene.camX = scene.hx - 440; scene.orbs.forEach((o) => (o.got = true, o.g.setVisible(false))); } refreshHud(); });
   await UI.chapterCard({ kicker: ch.id === "final" ? "Final stage" : `Chapter ${idx + 1} of ${total - 1}`, title: ch.title, sub: ch.goal });
   if (idx === 0) UI.hint(true, `<span><span class="kc">A</span><span class="kc">D</span>Move</span><span><span class="kc">W</span>Jump</span><span><span class="kc">SHIFT</span>Sprint</span><span><span class="kc">E</span>Interact</span>`);
   for (let i = at; i < ch.scenes.length; i++) {
     await scene.waitInteract(i); const ent = scene.entities[i];
-    await playScene(scene, ch, ent); scene.finish(ent); G.done = i + 1; refreshHud(); await UI.sleep(450);
+    await playScene(scene, ch, ent); scene.finish(ent); G.done = i + 1; saveSpot(); refreshHud(); await UI.sleep(450);
   }
   await scene.waitExit();
   if (ch.id === "final") return;
@@ -528,7 +571,7 @@ async function main(scene) {
     let ch;
     if (i < total) ch = await ensureChapter(i);
     else { await ensureDone(); const fb = SCRIPT.finalBoss; ch = { id: "final", title: fb.title, goal: fb.goal, theme: fb.theme, concepts: [], scenes: [{ type: "final_boss", id: "fin", boss: fb.boss, count: fb.count, passMarkRatio: fb.passMarkRatio }] }; }
-    await playChapter(scene, ch, i, total + 1, i === c0 ? +qp.get("at") || 0 : 0);
+    await playChapter(scene, ch, i, total + 1, i === c0 ? +qp.get("at") || Math.min(savedSpot(i), Math.max(0, (ch.scenes || []).length - 1)) : 0);
     await Track.progress(i + 1, i === total);
   }
   await ending();

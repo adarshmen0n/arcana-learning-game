@@ -1,6 +1,6 @@
 // Service worker: lets the game install on a phone and keep working briefly offline.
 // Network first (so updates always arrive), cache as the fallback. The API is never cached.
-const CACHE = "arcana-v10";
+const CACHE = "arcana-v11";
 self.addEventListener("install", (e) => { self.skipWaiting(); });
 self.addEventListener("activate", (e) => e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())));
 self.addEventListener("fetch", (e) => {

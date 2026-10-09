@@ -38,8 +38,8 @@ function authView(msg = "", startMode = "login") {
       <p class="muted small"><a href="#" id="back">Back to log in</a></p></div>` : `<div class="card auth"><h1>${reg ? "Create your account" : "Welcome back, ranger"}</h1>
       <div class="tabs"><button class="${!reg ? "on" : ""}" data-m="login">Log in</button><button class="${reg ? "on" : ""}" data-m="register">Sign up</button></div>
       <form id="f" novalidate>
-      ${reg ? `<label>Display name<input name="username" maxlength="20" autocomplete="nickname" placeholder="3 to 20 letters or numbers" required></label><label>Email<input name="email" type="email" autocomplete="email" required></label>`
-            : `<label>Email or display name<input name="login" autocomplete="username" required></label>`}
+      ${reg ? `<label>User name<input name="username" maxlength="20" autocomplete="username" placeholder="3 to 20 letters or numbers" required></label><label>Email<input name="email" type="email" autocomplete="email" required></label>`
+            : `<label>Email or user name<input name="login" autocomplete="username" required></label>`}
       ${pwField("password", "Password", reg ? "new-password" : "current-password")}
       ${reg ? `<div id="meter" class="meter s0"><i></i><i></i><i></i><i></i><span></span></div><h3>Choose your ranger</h3><div class="pick"><button type="button" class="pickc ${gender === "m" ? "sel" : ""}" data-g="m"><i>&#9794;</i><b>Man</b></button><button type="button" class="pickc ${gender === "f" ? "sel" : ""}" data-g="f"><i>&#9792;</i><b>Woman</b></button></div>
         <label class="check"><input type="checkbox" name="acceptTerms"><span>I agree to the <a href="/terms.html" target="_blank">Terms of Service</a> and <a href="/privacy.html" target="_blank">Privacy Policy</a>.</span></label>` : ""}
@@ -74,7 +74,7 @@ function profileDialog() {
   d.innerHTML = `<div class="row between"><h2 style="margin:0">${esc(u.username)}</h2><button id="close">Close</button></div><p class="muted small">${esc(u.email || "No email on this account")}</p>
     <h3>Your ranger</h3><div class="pick"><button class="pickc ${u.gender === "m" ? "sel" : ""}" data-g="m"><i>&#9794;</i><b>Man</b></button><button class="pickc ${u.gender === "f" ? "sel" : ""}" data-g="f"><i>&#9792;</i><b>Woman</b></button></div>
     <h3>${u.hasPassword ? "Change password" : "Set a password"}</h3><form id="pf" novalidate>${u.hasPassword ? pwField("current", "Current password", "current-password") : ""}${pwField("password", "New password", "new-password")}<div id="meter" class="meter s0"><i></i><i></i><i></i><i></i><span></span></div><div id="pe"></div><button class="primary">Save password</button></form>
-    <h3>Leaderboard</h3><label class="check"><input type="checkbox" id="onboard" ${u.onBoard !== false ? "checked" : ""}><span>Show my display name, level and XP on the global leaderboard</span></label>
+    <h3>Leaderboard</h3><label class="check"><input type="checkbox" id="onboard" ${u.onBoard !== false ? "checked" : ""}><span>Show my user name, level and XP on the global leaderboard</span></label>
     <h3>Your data</h3><div class="row"><button id="exp">Download my data</button><button id="all">Log out of all devices</button></div>
     <h3>Danger zone</h3><p class="muted small">Deleting your account permanently removes your games, answers, mastery and roadmap. Type DELETE to confirm.</p><div class="row"><input id="dc" placeholder="DELETE" style="max-width:140px"><button class="danger" id="del" disabled>Delete my account</button></div>
     <p class="muted small" style="margin-top:14px"><a href="/help.html">Help and support</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/privacy.html">Privacy</a></p>`;
@@ -156,7 +156,7 @@ const rwPost = (path, body) => api(path, "POST", { ...body, tz: TZ() });
 
 // ------------------------------------------------------------------ lobby music: a slow synthwave pad + arpeggio, made live with WebAudio (no files)
 const Music = (() => {
-  let ac = null, out = null, timer = 0, step = 0, on = false;
+  let ac = null, out = null, timer = 0, step = 0, on = false, hiddenStop = false;
   const pref = () => { try { return localStorage.getItem("arcana_music") !== "off"; } catch (e) { return true; } };
   const CH = [[57, 60, 64, 67], [53, 57, 60, 64], [55, 59, 62, 65], [52, 55, 59, 62]];   // Am7 Fmaj7 G7 Em7
   const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
@@ -181,6 +181,8 @@ const Music = (() => {
   function toggle() { const want = !on; try { localStorage.setItem("arcana_music", want ? "on" : "off"); } catch (e) {} want ? start() : stop(); }
   function paint() { const b = $("#mus"); if (b) { b.classList.toggle("off", !on); b.title = on ? "Music on (click to mute)" : "Music off (click to play)"; } }
   addEventListener("pointerdown", () => { if (document.body.classList.contains("hub")) start(); }, { once: false });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) { if (on) { stop(); on = false; hiddenStop = true; } } else if (hiddenStop) { hiddenStop = false; start(); } });   // no lobby music in the background
+  addEventListener("pagehide", () => { stop(); try { if (ac) ac.close(); } catch (e) {} ac = null; out = null; });
   return { start, stop, toggle, paint, get on() { return on; } };
 })();
 
@@ -371,7 +373,7 @@ const VIEW_FN = {
 };
 const needLb = () => { if (!S.lb) api("/api/leaderboard").then((lb) => { S.lb = lb; if (["hub", "progress"].includes(S.view)) go(S.view); }).catch(() => {}); };
 const AFTER = {
-  hub() { document.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => go(b.dataset.go))); if ($("#upcard")) wireUpload(); needLb(); wireChal(); },
+  hub() { document.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => go(b.dataset.go))); if ($("#upcard")) { wireUpload(); resumeWatch(); } needLb(); wireChal(); },
   season() {
     wireChal(); wireLook(); const nx = $("#track .next") || $("#track .ready"); if (nx) nx.scrollIntoView({ inline: "center", block: "nearest" });
     document.querySelectorAll("[data-tier]").forEach((b) => (b.onclick = async () => {
@@ -389,7 +391,7 @@ const AFTER = {
         tick();
       } catch (e) { toast(e.message); b.disabled = false; }
     }));
-    if ($("#upcard")) wireUpload();
+    if ($("#upcard")) { wireUpload(); resumeWatch(); }
     document.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => { if (confirm("Delete this game and your progress in it?")) { await api("/api/games/" + b.dataset.del, "DELETE"); await refresh(); } }));
   },
   arc() {
@@ -458,25 +460,36 @@ function wireUpload() {
     try {
       const data = file ? await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.onerror = rej; fr.readAsDataURL(file); }) : null;
       const job = await api("/api/jobs", "POST", file ? { filename: file.name, data } : { filename: "pasted-notes.txt", text });
-      $("#msg").innerHTML = '<div class="pbar"><i id="pf"></i></div><p id="pm" class="muted small"></p><div id="pb"></div>';
-      let misses = 0;
-      const tick = async () => {
-        let j;
-        try { j = await api("/api/jobs/" + job.id); misses = 0; }
-        catch (er) {                                      // a dropped connection: keep trying; a lost job (server restarted): say so
-          if (/unknown job/i.test(er.message) || ++misses > 40) { if ($("#msg")) $("#msg").innerHTML = '<div class="err">The server restarted while building your game. Please press Forge my game again.</div>'; if ($("#go")) $("#go").disabled = false; return; }
-          if ($("#pm")) $("#pm").textContent = "Reconnecting...";
-          return setTimeout(tick, 3000);
-        }
-        if ($("#pf")) { $("#pf").style.width = j.pct + "%"; $("#pm").textContent = j.error ? j.error : j.message + (j.total ? ` (${j.ready}/${j.total} chapters)` : ""); }
-        if ($("#pb") && j.total) $("#pb").innerHTML = `<p class="muted small">${j.ready} of ${j.total} chapters built. Your game unlocks when every chapter is ready.</p>`;
-        if (j.status === "done") { toast(j.mode === "offline" ? "Game ready in quick mode (the AI was busy). Press Rebuild in Quests later for full AI lessons." : "Game ready: " + (j.title || "")); await refresh(); return; }
-        if (j.status === "error") { if ($("#msg")) $("#msg").innerHTML = `<div class="err">${esc(j.error)}</div>`; if ($("#go")) $("#go").disabled = false; toast(j.error); return; }
-        setTimeout(tick, 1500);
-      };
-      tick();
+      watchJob(job.id);
     } catch (e) { $("#msg").innerHTML = `<div class="err">${esc(e.message)}</div>`; $("#go").disabled = false; }
   };
+}
+
+// progress of a game being built; survives closing the app (the job id is remembered) and server restarts (the build resumes on the server)
+function resumeWatch() { let id = null; try { id = localStorage.getItem("arcana_job"); } catch (e) {} if (id) watchJob(id); }
+function watchJob(id) {
+  try { localStorage.setItem("arcana_job", id); } catch (e) {}
+  const box = $("#msg"); if (!box) return;
+  box.innerHTML = '<div class="pbar"><i id="pf"></i></div><p id="pm" class="muted small">Building your game...</p><div id="pb"></div>';
+  if ($("#go")) $("#go").disabled = true;
+  let misses = 0;
+  const forget = () => { try { localStorage.removeItem("arcana_job"); } catch (e) {} };
+  const tick = async () => {
+    let j;
+    try { j = await api("/api/jobs/" + id); misses = 0; }
+    catch (er) {                                          // connection lost or the server is restarting: the build continues on the server, so keep waiting
+      if (/unknown job/i.test(er.message) && ++misses > 8) { forget(); if ($("#msg")) $("#msg").innerHTML = '<div class="err">This build could not be found. Please press Forge my game again.</div>'; if ($("#go")) $("#go").disabled = false; return; }
+      if (++misses > 160) { if ($("#pm")) $("#pm").textContent = "Still reconnecting. Your game keeps building on the server; check Quests in a few minutes."; return; }
+      if ($("#pm")) $("#pm").textContent = "The server is restarting. Your game is saved and will continue in a moment...";
+      return setTimeout(tick, 3000);
+    }
+    if ($("#pf")) { $("#pf").style.width = j.pct + "%"; $("#pm").textContent = j.error ? j.error : j.message + (j.total ? ` (${j.ready}/${j.total} chapters)` : ""); }
+    if ($("#pb") && j.total) $("#pb").innerHTML = `<p class="muted small">${j.ready} of ${j.total} chapters built. Your game unlocks when every chapter is ready.</p>`;
+    if (j.status === "done") { forget(); toast(j.mode === "offline" ? "Game ready in quick mode (the AI was busy). Press Rebuild in Quests later for full AI lessons." : "Game ready: " + (j.title || "")); await refresh(); return; }
+    if (j.status === "error") { forget(); if ($("#msg")) $("#msg").innerHTML = `<div class="err">${esc(j.error)}</div>`; if ($("#go")) $("#go").disabled = false; toast(j.error); return; }
+    setTimeout(tick, 1500);
+  };
+  tick();
 }
 
 async function adminInbox() {

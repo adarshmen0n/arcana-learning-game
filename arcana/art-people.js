@@ -17,6 +17,8 @@ const People = (() => {
     rival: { gender: "f", skin: "#d6a383", hair: "#0b0b0e", hairStyle: "visor", tail: true, suit: "#331016", suit2: "#100508", plate: "#4d2028", trim: "#ff3b5c", glow: "#ff3b5c", boots: "#0b0507", gloves: "#100508", eye: "#6a1a2a", eyeGlow: "#ff2d4d", pack: "bag", pauldrons: true, spikes: true },
     enforcer: { gender: "m", skin: "#9c6d48", hair: "#140d09", hairStyle: "mask_horn", suit: "#33121a", suit2: "#0e0507", plate: "#5a5f6b", trim: "#ff3b5c", glow: "#ff3b5c", boots: "#140709", gloves: "#26262c", eye: "#3a1a10", eyeGlow: "#ff2d2d", cape: "#4a0b16", pauldrons: true, spikes: true, armored: true, bulk: 1.12 },
     colossus: { gender: "m", skin: "#946a4c", hair: "#0c0c0c", hairStyle: "helm_full", suit: "#3f3a2c", suit2: "#110e08", plate: "#6c727e", trim: "#ffb347", glow: "#ffb347", boots: "#16130c", gloves: "#322e25", eye: "#3a2a1c", eyeGlow: "#ff7a1a", pauldrons: true, spikes: true, bulk: 1.5, armored: true },
+    doom: { gender: "m", skin: "#9ea7b1", hair: "#0d2a13", hairStyle: "iron_hood", hood: "#1b5426", hood2: "#071a0c", suit: "#8d97a1", suit2: "#3a4148", plate: "#c3cbd3", trim: "#d4af37", glow: "#4ade80",
+      boots: "#5d656d", gloves: "#a9b2bb", eye: "#050505", eyeGlow: "#5dff8a", cape: "#164a20", robe: true, robeColor: "#1f6a2c", robe2: "#0a2a12", armored: true, bulk: 1.15 },   // final villain: iron mask, green hood and cloak
     overlord: { gender: "m", skin: "#b8a8bd", hair: "#0a0610", hairStyle: "crown", suit: "#1e1029", suit2: "#08040d", plate: "#331f4a", trim: "#ffd36a", glow: "#d946ef", boots: "#08040d", gloves: "#160d20", eye: "#d946ef", eyeGlow: "#e04dff", cape: "#240b33", robe: true, robeColor: "#22102e", robe2: "#07030a", halo: true, armored: true, spikes: true },
   };
 
@@ -78,6 +80,28 @@ const People = (() => {
       c.save(); c.shadowColor = S.eyeGlow; c.shadowBlur = 16; c.fillStyle = S.eyeGlow; c.beginPath(); c.moveTo(26, 22.4); c.lineTo(42, 21); c.lineTo(42, 24.2); c.lineTo(27, 25.4); c.closePath(); c.fill(); c.restore();
       c.fillStyle = "#04060a"; for (let i = 0; i < 4; i++) c.fillRect(29 + i * 3.5, 32, 1.6, 7);
       c.strokeStyle = S.trim; c.lineWidth = 1.6; c.beginPath(); c.moveTo(26, 3); c.lineTo(25, 45); c.stroke();
+      return;
+    }
+    if (S.hairStyle === "iron_hood") {                       // the final villain: a deep green hood around a polished iron mask
+      c.fillStyle = cloth(c, 0, 0, 48, 0, S.hood, S.hood2); c.beginPath(); c.moveTo(4, 52); c.bezierCurveTo(1, 30, 3, 8, 22, 1); c.bezierCurveTo(36, -1, 46, 8, 47, 22); c.lineTo(46, 52); c.closePath(); c.fill(); edge(c, 0.8);
+      c.strokeStyle = "rgba(0,0,0,.35)"; c.lineWidth = 1; for (const x of [10, 16, 40]) { c.beginPath(); c.moveTo(x, 6 + (x > 30 ? 4 : 0)); c.quadraticCurveTo(x - 3, 30, x - 1, 50); c.stroke(); }
+      c.fillStyle = "#020403"; c.beginPath(); c.moveTo(14, 46); c.bezierCurveTo(10, 26, 16, 7, 28, 6); c.bezierCurveTo(38, 6, 44, 14, 44, 24); c.lineTo(44, 46); c.closePath(); c.fill();   // shadow inside the hood
+      const M = () => { c.beginPath(); c.moveTo(18, 14); c.bezierCurveTo(20, 9, 34, 8, 41, 13); c.lineTo(43, 24); c.lineTo(42.5, 36); c.lineTo(39, 43); c.lineTo(26, 45); c.lineTo(19, 40); c.lineTo(17, 26); c.closePath(); };
+      M(); c.fillStyle = metal(c, 17, 8, 44, 45, S.plate); c.fill(); edge(c, 0.9);
+      c.save(); M(); c.clip();
+      c.fillStyle = "rgba(255,255,255,.28)"; c.beginPath(); c.moveTo(34, 10); c.lineTo(41, 13); c.lineTo(42.5, 30); c.lineTo(39, 30); c.closePath(); c.fill();     // polished highlight down the mask
+      c.fillStyle = "rgba(0,0,0,.22)"; c.fillRect(17, 8, 7, 40);
+      c.restore();
+      c.strokeStyle = "rgba(20,24,28,.85)"; c.lineWidth = 1.6; c.beginPath(); c.moveTo(19, 17); c.lineTo(42, 16.5); c.stroke();                         // heavy brow ridge
+      c.lineWidth = 1; c.beginPath(); c.moveTo(30, 17); c.lineTo(31, 43); c.stroke();                                                                     // centre seam
+      c.fillStyle = "#020202"; c.beginPath(); c.moveTo(22, 20.5); c.lineTo(28.5, 19.8); c.lineTo(28, 22.4); c.lineTo(22.6, 22.8); c.closePath(); c.fill(); // eye slits
+      c.beginPath(); c.moveTo(33, 19.6); c.lineTo(41.5, 19); c.lineTo(41, 22); c.lineTo(33.4, 22.3); c.closePath(); c.fill();
+      c.save(); c.shadowColor = S.eyeGlow; c.shadowBlur = 10; c.fillStyle = S.eyeGlow; c.fillRect(35, 20.2, 5, 1.2); c.fillRect(24, 21, 3.4, 1); c.restore();
+      c.strokeStyle = "rgba(20,24,28,.8)"; c.lineWidth = 1.1; c.beginPath(); c.moveTo(21, 27); c.quadraticCurveTo(31, 29, 42, 26); c.stroke();            // cheek plates
+      c.fillStyle = "#050607"; for (let i = 0; i < 5; i++) c.fillRect(27 + i * 3, 32, 1.3, 7);                                                             // mouth grille
+      c.strokeStyle = "rgba(20,24,28,.85)"; c.lineWidth = 1.2; c.beginPath(); c.moveTo(25, 31); c.lineTo(42, 30.5); c.moveTo(25.5, 40); c.lineTo(40, 40); c.stroke();
+      c.fillStyle = "rgba(255,255,255,.7)"; for (const [x, y] of [[20, 15], [41, 14], [20, 37], [40, 41], [24, 28]]) { c.beginPath(); c.arc(x, y, 0.8, 0, 6.28); c.fill(); }   // rivets
+      c.strokeStyle = "rgba(0,0,0,.45)"; c.lineWidth = 1.4; c.beginPath(); c.moveTo(14, 46); c.bezierCurveTo(10, 26, 16, 7, 28, 6); c.bezierCurveTo(38, 6, 44, 14, 44, 24); c.stroke();   // hood rim
       return;
     }
     // skin with sculpted light: dark at the back, highlights on the brow, cheekbone and nose

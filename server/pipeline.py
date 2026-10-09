@@ -108,6 +108,19 @@ class Job:
         self.created = time.time()
         self.lock = threading.RLock()
         self.chapters = {}
+        self.resume = {}                                    # saved progress from before a server restart (plan, research notes, finished chapters)
+
+    def checkpoint(self, **extra):
+        """Save the build so far; a restarted server picks it up here instead of losing it."""
+        try:
+            with self.lock:
+                self.resume.update(extra)
+                body = {"filename": self.filename, "opts": self.opts, "mode": self.mode, "text": self.resume.get("text"), "plan": self.resume.get("plan"),
+                        "notes": self.resume.get("notes", ""), "chapters": {str(k): v for k, v in self.chapters.items()}, "created": self.created}
+            if body["text"]:
+                db.job_save(self.id, body)
+        except Exception:
+            traceback.print_exc()
 
     def log(self, msg):
         with self.lock:
@@ -162,6 +175,36 @@ def start(filename, data=None, text=None, opts=None) -> Job:
     return job
 
 
+def _forget(job):
+    try:
+        db.job_drop(job.id)
+    except Exception:
+        pass
+
+
+def resume_unfinished():
+    """Called when the server starts: every build that a restart interrupted carries on from its last checkpoint."""
+    try:
+        rows = db.jobs_unfinished()
+    except Exception:
+        traceback.print_exc()
+        return 0
+    for jid, body in rows:
+        if jid in JOBS or not body.get("text"):
+            continue
+        job = Job(body.get("filename") or "notes.txt", text=body["text"], opts=body.get("opts") or {})
+        job.id, job.created = jid, body.get("created") or time.time()
+        job.mode = body.get("mode") or job.mode
+        job.resume = {"text": body["text"], "plan": body.get("plan"), "notes": body.get("notes", ""), "chapters": body.get("chapters") or {}}
+        job.log("The server restarted; continuing your game from where it stopped")
+        JOBS[jid] = job
+        threading.Thread(target=_run, args=(job,), daemon=True).start()
+    if rows and not getattr(_keep_awake, "on", False):
+        _keep_awake.on = True
+        threading.Thread(target=_keep_awake, daemon=True).start()
+    return len(rows)
+
+
 def _queue_position(job):
     waiting = sorted((j for j in JOBS.values() if j.status == "queued"), key=lambda j: j.created)
     return next((i for i, j in enumerate(waiting) if j is job), 0)
@@ -200,6 +243,8 @@ def _build(job: Job):
                 job.log(f"Notice: the file is very long. Only the first {ingest.MAX_CHARS:,} characters were used.")
         words = len(text.split())
         job.log(f"{words:,} words found")
+        if not job.resume.get("text"):
+            job.checkpoint(text=text)
         if words < 60:
             raise PipelineError("Not enough material: upload at least a few paragraphs.")
         h = _text_hash(text)
@@ -232,9 +277,11 @@ def _build(job: Job):
             db.add_game(job.id, job.opts["owner"], job.script["title"])
             db.save_source(job.id, text)                 # kept so a personal review can be written from the same material later
         job.pct, job.status = 100, "done"
+        _forget(job)
         job.set("done", 100, "Your game is ready")
     except (ingest.IngestError, llm.LLMError, PipelineError, ValueError) as e:
         job.status, job.error = "error", str(e)
+        _forget(job)
         job.log("Stopped: " + str(e))
     except Exception as e:  # unexpected: details stay in the server log, the player gets a short message
         traceback.print_exc()
@@ -259,8 +306,12 @@ def _ai(job: Job, text: str):
               "fight: 'magic' for abstract/energy/theory topics, 'martial' for physical/historical/practical topics. "
               "boss_name: a menacing villain name (a warlord, sorcerer, beast-knight or similar) that fits the chapter (2-3 words). npc_names: four friendly human mentor names (different in every chapter).\n"
               "- final_boss_name: the villain of the final exam. summary: 2 sentences." + student.prompt_block(job.opts.get("profile")))
-    plan = clean_plan(llm.call_json(SYS, prompt, ANALYZE_SCHEMA, doc=doc_block(marked), max_tokens=14000, tally=tally, log=job.log))
-    plan = plan_worlds(align_parts(plan, parts))
+    if job.resume.get("plan"):                                   # resumed after a restart: keep the plan that was already made
+        plan = job.resume["plan"]
+        job.log("Resuming your game where the server left off")
+    else:
+        plan = clean_plan(llm.call_json(SYS, prompt, ANALYZE_SCHEMA, doc=doc_block(marked), max_tokens=14000, tally=tally, log=job.log))
+        plan = plan_worlds(align_parts(plan, parts))
     job.total = len(plan["chapters"])
     job.script = {"schemaVersion": 2, "projectId": job.id, "title": plan["title"], "audience": {"level": plan["level"], "modes": ["student"]},
                   "summary": plan["summary"], "chapters": [], "finalBoss": final_boss(plan),
@@ -268,7 +319,7 @@ def _ai(job: Job, text: str):
     job.log(f"Plan: {job.total} chapters covering all {words:,} words, {len(plan['concepts'])} concepts")
 
     notes = ""
-    flagged = [c for c in plan["concepts"] if c["needs_research"] and c["research_query"].strip()][:5]
+    flagged = [] if job.resume.get("plan") else [c for c in plan["concepts"] if c["needs_research"] and c["research_query"].strip()][:5]
     if flagged and not llm.has_web():                              # free fallback: live web lookup, cited
         blocks = []
         for c in flagged:
@@ -305,6 +356,11 @@ def _ai(job: Job, text: str):
         job.log("Web research added" if notes else "No web research available; using your material only")
     if not notes and research_notes:
         notes = research_notes
+    if job.resume.get("plan"):
+        notes = job.resume.get("notes", "")
+    else:
+        job.checkpoint(plan=plan, notes=notes)
+    done = {int(k): v for k, v in (job.resume.get("chapters") or {}).items()}
     index = retrieval.Index(text)
     byid = {c['id']: c for c in plan['concepts']}
 
@@ -333,16 +389,21 @@ def _ai(job: Job, text: str):
                     time.sleep(wait)
 
     job.set("chapter1", 30, "Forging chapter 1")
-    job.chapters[0] = build(0)
+    job.chapters[0] = done[0] if 0 in done else build(0)
     job.publish()
+    job.checkpoint()
     job.set("chapters", 55, f"Chapter 1 of {job.total} built; building the rest")
     if job.total > 1:
         with cf.ThreadPoolExecutor(max_workers=llm.concurrency()) as ex:
-            futs = {ex.submit(build, i): i for i in range(1, job.total)}
+            for i in range(1, job.total):
+                if i in done:
+                    job.chapters[i] = done[i]
+            futs = {ex.submit(build, i): i for i in range(1, job.total) if i not in done}
             for f in cf.as_completed(futs):
                 i = futs[f]
                 job.chapters[i] = f.result()
                 job.publish()
+                job.checkpoint()
                 job.set("chapters", 55 + int(40 * job.ready() / job.total), f"Chapter {i + 1} ready")
     job.set("finish", 96, "Assembling your game")
 
@@ -421,8 +482,8 @@ def clean_plan(plan):
 
 def final_boss(plan):
     return {"title": "The Final Boss", "goal": "Defeat the Sorcerer using everything you have learned", "theme": {"background": "ember_citadel"},
-            "boss": {"name": plan.get("final_boss_name") or "The Overlord", "kind": "overlord", "fight": "magic"},
-            "count": 15, "passMarkRatio": 0.7, "extraQuestions": []}
+            "boss": {"name": plan.get("final_boss_name") or "The Iron Sovereign", "kind": "doom", "fight": "magic"},
+            "count": 20, "passMarkRatio": 0.85, "extraQuestions": []}             # the final exam: 20 questions, at least 17 right
 
 
 def _both(fa, fb):

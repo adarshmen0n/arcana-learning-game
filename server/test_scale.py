@@ -105,6 +105,49 @@ for j in jobs:
 ok(all(j.status == "done" for j in jobs) and peak[0] <= pipeline.MAX_PARALLEL, f"every queued build finishes and no more than {pipeline.MAX_PARALLEL} run at once")
 pipeline._offline = real_offline
 
+# 3b. a server restart in the middle of a build: the build resumes from its last checkpoint
+import llm as _llm
+real_call, real_gen, real_ai2 = _llm.call_json, pipeline.gen_chapter, pipeline._ai
+pipeline._ai = real_ai2
+built = []
+plan_obj = {"title": "Plants", "subject": "biology", "level": "school", "summary": "s. s.", "final_boss_name": "Boss",
+            "concepts": [{"id": f"c{i}", "name": TERMS[i], "summary": "x", "importance": 3, "complexity": 2, "needs_research": False, "research_query": ""} for i in range(3)],
+            "chapters": [{"title": f"Ch {i}", "goal": "g", "concept_ids": [f"c{i}"], "mood": "science", "fight": "magic", "boss_name": "B", "npc_names": ["A", "B", "C", "D"]} for i in range(3)]}
+_llm.call_json = lambda *a, **k: plan_obj
+crash = {"on": True}
+
+
+def fake_gen(job, plan, i, doc, index=None, part=None):
+    if crash["on"] and i > 0:
+        raise SystemExit("server stopped")              # the restart kills the build after chapter 1
+    built.append(i)
+    ch = plan["chapters"][i]
+    cons = [c for c in plan["concepts"] if c["id"] in ch["concept_ids"]]
+    _, gens = pipeline.mockgen.build(TEXT, "x.txt")
+    return pipeline.assemble_chapter(i, len(plan["chapters"]), ch, cons, dict(gens[0]), "school")
+
+
+pipeline.gen_chapter = fake_gen
+real_split = pipeline.split_parts
+pipeline.split_parts = lambda text: [text[:len(text) // 3], text[len(text) // 3: 2 * len(text) // 3], text[2 * len(text) // 3:]]
+job = pipeline.Job("r.txt", text=TEXT, opts={"fresh": True, "owner": None})
+job.mode = "ai"
+pipeline.JOBS[job.id] = job
+try:
+    pipeline._run(job)
+except SystemExit:
+    pass
+saved = dict(db.jobs_unfinished())
+ok(job.id in saved and saved[job.id]["plan"] and "0" in saved[job.id]["chapters"], "a build saves its plan and every finished chapter as it goes")
+del pipeline.JOBS[job.id]                               # the server restarts: memory is gone, the database is not
+crash["on"] = False
+built.clear()
+ok(pipeline.resume_unfinished() == 1, "on start-up the interrupted build is picked up again")
+again = wait(pipeline.JOBS[job.id], 60)
+ok(again.status == "done" and sorted(built) == [1, 2] and len(again.chapters) == 3, "it continues from chapter 2 instead of starting over, and finishes")
+ok(not db.jobs_unfinished(), "a finished build leaves no checkpoint behind")
+_llm.call_json, pipeline.gen_chapter, pipeline.split_parts = real_call, real_gen, real_split
+
 # 4. static files: gzip, ETag, 304
 PORT = 5197
 srv = server.Server(("127.0.0.1", PORT), functools.partial(server.Handler, directory=str(config.ROOT / "arcana")))
@@ -123,6 +166,10 @@ c = http.client.HTTPConnection("127.0.0.1", PORT)
 c.request("GET", "/")
 r = c.getresponse(); r.read()
 ok(r.status == 200 and r.getheader("Cache-Control") == "no-cache", "pages are always checked for updates")
+c = http.client.HTTPConnection("127.0.0.1", PORT)
+c.request("GET", "/game.js")
+r = c.getresponse(); r.read()
+ok(r.getheader("Cache-Control") == "no-cache", "game code is checked on every load, so a deploy never mixes old and new files")
 c = http.client.HTTPConnection("127.0.0.1", PORT)
 c.request("GET", "/api/status")
 r = c.getresponse(); r.read()

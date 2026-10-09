@@ -99,7 +99,7 @@ def register(r):
     name, pw = clean(r.body.get("username"), 20), str(r.body.get("password") or "")
     email = clean(r.body.get("email"), 254).lower()
     if not USER.match(name):
-        raise Err(400, "Display name: 3 to 20 letters, numbers, dots, dashes or underscores.")
+        raise Err(400, "User name: 3 to 20 letters, numbers, dots, dashes or underscores.")
     if not EMAIL.match(email):
         raise Err(400, "Enter a valid email address.")
     if not r.body.get("acceptTerms"):
@@ -108,10 +108,10 @@ def register(r):
     if db.email_taken(email):
         raise Err(409, "An account with that email already exists. Try logging in.")
     if db.username_taken(name):
-        raise Err(409, "That display name is taken. Pick another one.")
+        raise Err(409, "That user name is taken. Pick another one.")
     uid = db.create_user(name, pw, r.body.get("gender"), email)
     if not uid:
-        raise Err(409, "That email or display name is already in use.")
+        raise Err(409, "That email or user name is already in use.")
     r.cookie(db.new_session(uid))
     return {"user": public_user(db.q("SELECT * FROM users WHERE id=?", (uid,), one=True))}
 

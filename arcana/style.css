@@ -424,3 +424,27 @@ body.fighting #arc-btn.ingame { display: none; }   /* Arc Search is locked in fi
 .lowgfx .panel, .lowgfx .panel.out, .lowgfx .ghost { filter: none !important; }
 @keyframes panelInLow { from { opacity: 0; transform: translateY(14px); } }
 .lowgfx .panel { animation-name: panelInLow !important; }
+
+/* ---- top bar fits any window: the step track shares space and shrinks for long chapters; the score never leaves the screen ---- */
+#hud { grid-template-columns: minmax(0, 1fr) minmax(0, 2.3fr) minmax(0, 1fr) !important; column-gap: 1.2cqw; }
+#hud .mid { min-width: 0; }
+#hud .right { min-width: 0; flex-wrap: nowrap; }
+#track { max-width: 100%; overflow-x: auto; scrollbar-width: none; justify-content: safe center; scroll-behavior: smooth; }
+#track::-webkit-scrollbar { display: none; }
+#track.dense .stn i { width: clamp(16px, 1.8cqw, 26px); font-size: clamp(9px, 1cqw, 13px); }
+#track.dense .stn:not(:first-child)::before { width: clamp(4px, .7cqw, 12px); }
+#track.xdense .stn i { width: clamp(14px, 1.5cqw, 22px); font-size: clamp(8px, .85cqw, 11px); }
+#track.xdense .stn:not(:first-child)::before { width: clamp(3px, .45cqw, 8px); }
+#hud .right > * { flex: none; }
+
+/* mini-games own the whole screen: hints, Arc Search and the interact button step aside (move pads stay on phones) */
+body.arcading #hint, body.arcading #arc-btn, body.arcading #touch > div:last-child button[data-k="act"] { display: none !important; }
+
+/* pause menu */
+#pausebox { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0,0,0,.72); animation: fade .2s both; }
+#pausebox .pb { width: min(440px, 86%); display: grid; gap: 12px; padding: 26px 28px; background: linear-gradient(180deg, rgba(8,24,12,.98), rgba(2,8,4,.98)); border-top: 3px solid var(--neon); clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px)); }
+#pausebox .k { font: 700 12px var(--head); letter-spacing: .4em; color: var(--neon); }
+#pausebox h1 { margin: 0; font-size: clamp(18px, 2.4cqw, 28px); }
+#pausebox p { margin: 0 0 6px; font-size: 14px; }
+#pausebox .btn { width: 100%; text-align: center; }
+#pausebtn b { font: 900 12px var(--head); letter-spacing: -.05em; }

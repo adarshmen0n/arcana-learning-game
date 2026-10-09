@@ -570,7 +570,7 @@ async function main(scene) {
   for (let i = c0; i <= total; i++) {
     let ch;
     if (i < total) ch = await ensureChapter(i);
-    else { await ensureDone(); const fb = SCRIPT.finalBoss; ch = { id: "final", title: fb.title, goal: fb.goal, theme: fb.theme, concepts: [], scenes: [{ type: "final_boss", id: "fin", boss: fb.boss, count: fb.count, passMarkRatio: fb.passMarkRatio }] }; }
+    else { await ensureDone(); const fb = SCRIPT.finalBoss; ch = { id: "final", title: fb.title, goal: fb.goal, theme: fb.theme, concepts: [], scenes: [{ type: "final_boss", id: "fin", boss: { ...fb.boss, name: "Dr Doom", kind: "doom" }, count: fb.count, passMarkRatio: fb.passMarkRatio }] }; }
     await playChapter(scene, ch, i, total + 1, i === c0 ? +qp.get("at") || Math.min(savedSpot(i), Math.max(0, (ch.scenes || []).length - 1)) : 0);
     await Track.progress(i + 1, i === total);
   }

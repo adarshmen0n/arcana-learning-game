@@ -2,7 +2,7 @@
 // Joints are driven by keyframed "moves" (punch, kick, uppercut, cast...) so fights are real animation.
 const People = (() => {
   const { lg, glow, rgba, mix } = Art.util;
-  const K = 2; // texture supersampling
+  const K = typeof Art !== "undefined" && Art.LOW ? 1.5 : 2; // texture supersampling (lighter on phones)
   const NEON = "#39ff14";
 
   // ---------- who is who ----------
@@ -48,7 +48,7 @@ const People = (() => {
   // ---------- drawing helpers ----------
   function ptex(scene, key, w, h, fn) {
     if (scene.textures.exists(key)) return;
-    const t = scene.textures.createCanvas(key, w * K, h * K), c = t.getContext(); c.scale(K, K); fn(c, w, h); t.refresh();
+    const t = scene.textures.createCanvas(key, Math.ceil(w * K), Math.ceil(h * K)), c = t.getContext(); c.scale(K, K); fn(c, w, h); t.refresh();
   }
   const led = (c, x, y, col, r = 2) => { c.save(); c.shadowColor = col; c.shadowBlur = 9; c.fillStyle = col; c.beginPath(); c.arc(x, y, r, 0, 6.28); c.fill(); c.restore(); };
   const stripe = (c, x, y, w, h, col) => { c.save(); c.shadowColor = col; c.shadowBlur = 8; c.fillStyle = col; c.fillRect(x, y, w, h); c.restore(); };

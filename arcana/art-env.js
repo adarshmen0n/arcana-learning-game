@@ -485,5 +485,6 @@ const Art = (() => {
     try { const q = new URLSearchParams(location.search).get("gfx") || localStorage.getItem("arcana_gfx"); if (q === "high") return false; if (q === "low") return true; } catch (e) {}
     return matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
   })();
+  if (LOW) document.documentElement.classList.add("lowgfx");
   return { W, H, GROUND, TW, LAYER_BOTTOM, LOW, buildTheme, util: { mk, lg, glow, rgba, mix, R, rnd, wrap, setSeed: (s) => (seed = s) } };
 })();

@@ -69,23 +69,24 @@ class World extends Phaser.Scene {
     this.layers.push({ f: 1, o: add(this.add.tileSprite(0, GROUND, W, H - GROUND, th.ground).setOrigin(0).setScrollFactor(0).setDepth(6)) });
     this.layers.push({ f: 1.35, o: add(this.add.tileSprite(0, H - 260, W, 260, th.fg).setOrigin(0).setScrollFactor(0).setDepth(20)) });
     const tint = Phaser.Display.Color.HexStringToColor(th.rays).color, fog = Phaser.Display.Color.HexStringToColor(th.fog).color;
-    const rays = add(this.add.tileSprite(0, 0, W, H, "rays").setOrigin(0).setScrollFactor(0).setDepth(8).setBlendMode(Phaser.BlendModes.ADD).setTint(tint).setAlpha(0.55));
-    this.layers.push({ f: 0.2, o: rays }); this.tweens.add({ targets: rays, alpha: 0.25, duration: 3200, yoyo: true, repeat: -1, ease: "Sine.inOut" });
+    const LOW = Art.LOW;                                       // phones: every full-screen layer costs a whole screen of pixels each frame
+    if (!LOW) { const rays = add(this.add.tileSprite(0, 0, W, H, "rays").setOrigin(0).setScrollFactor(0).setDepth(8).setBlendMode(Phaser.BlendModes.ADD).setTint(tint).setAlpha(0.55));
+      this.layers.push({ f: 0.2, o: rays }); this.tweens.add({ targets: rays, alpha: 0.25, duration: 3200, yoyo: true, repeat: -1, ease: "Sine.inOut" }); }
     const f1 = add(this.add.tileSprite(0, GROUND - 200, W, 260, "fogbank").setOrigin(0).setScrollFactor(0).setDepth(5.5).setTint(fog).setAlpha(0.35));
-    const f2 = add(this.add.tileSprite(0, GROUND - 120, W, 260, "fogbank").setOrigin(0).setScrollFactor(0).setDepth(19).setTint(fog).setAlpha(0.2));
-    this.fogs = [{ o: f1, f: 0.7, drift: 6 }, { o: f2, f: 1.15, drift: -9 }]; this.fogT = 0;
+    this.fogs = [{ o: f1, f: 0.7, drift: 6 }]; this.fogT = 0;
+    if (!LOW) this.fogs.push({ o: add(this.add.tileSprite(0, GROUND - 120, W, 260, "fogbank").setOrigin(0).setScrollFactor(0).setDepth(19).setTint(fog).setAlpha(0.2)), f: 1.15, drift: -9 });
     const P = th.particles;
     add(this.add.particles(0, 0, "spark", { x: { min: 0, max: W }, y: { min: 0, max: H }, lifespan: { min: P.life[0], max: P.life[1] }, speedY: { min: P.vy[0], max: P.vy[1] }, speedX: { min: P.vx[0], max: P.vx[1] }, scale: { start: P.scale[0], end: P.scale[1] }, alpha: { start: P.alpha, end: 0 }, tint: P.tints, blendMode: "ADD", frequency: P.freq * (Art.LOW ? 2.5 : 1), quantity: 1 }).setScrollFactor(0).setDepth(15));
     this.accent = Phaser.Display.Color.HexStringToColor(th.accent).color;
     this.drifts = [];                                         // slowly moving cloud / aurora / mist layers
-    for (const d of th.drift || []) {
+    for (const d of (LOW ? (th.drift || []).slice(0, 1) : th.drift || [])) {
       const t = add(this.add.tileSprite(0, d.y, W, d.h, d.key).setOrigin(0).setScrollFactor(0).setDepth(d.d).setAlpha(d.alpha));
       if (d.add) t.setBlendMode(Phaser.BlendModes.ADD);
       if (d.pulse) this.tweens.add({ targets: t, alpha: d.alpha * 0.45, duration: 3500 + Math.random() * 2500, yoyo: true, repeat: -1, ease: "Sine.inOut" });
       this.drifts.push({ o: t, f: d.f, speed: d.speed, t: 0 });
     }
     this.birds = [];
-    if (th.birds) for (let i = 0; i < 7; i++) this.birds.push({ o: add(this.add.image(0, 0, "bird").setScrollFactor(0).setDepth(2.5).setAlpha(0.75).setScale(0.8 + Math.random() * 0.6)), x0: Math.random() * (W + 300), y0: 90 + Math.random() * 230, v: 18 + Math.random() * 22, ph: Math.random() * 6 });
+    if (th.birds) for (let i = 0; i < (LOW ? 3 : 7); i++) this.birds.push({ o: add(this.add.image(0, 0, "bird").setScrollFactor(0).setDepth(2.5).setAlpha(0.75).setScale(0.8 + Math.random() * 0.6)), x0: Math.random() * (W + 300), y0: 90 + Math.random() * 230, v: 18 + Math.random() * 22, ph: Math.random() * 6 });
   }
 
   startTitle() {
@@ -542,6 +543,6 @@ if (matchMedia("(pointer: coarse)").matches) {
 (async () => {
   try { await Promise.race([Promise.all([document.fonts.load('900 20px Orbitron'), document.fonts.load('700 20px Rajdhani')]), new Promise((r) => setTimeout(r, 2500))]); } catch (e) {}
   try { await Promise.race([loadHero(), new Promise((r) => setTimeout(r, 2500))]); } catch (e) {}   // the ranger's suit and trim
-  const game = new Phaser.Game({ type: Phaser.AUTO, parent: "game", width: W, height: H, backgroundColor: "#000", scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [World, MazeScene, ShooterScene, SnakeScene, HillScene], render: { antialias: true, antialiasGL: !Art.LOW, powerPreference: "high-performance" }, fps: { target: 60, smoothStep: true }, disableContextMenu: true });
+  const game = new Phaser.Game({ type: Phaser.AUTO, parent: "game", width: W, height: H, backgroundColor: "#000", scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [World, MazeScene, ShooterScene, SnakeScene, HillScene], render: { antialias: true, antialiasGL: !Art.LOW, powerPreference: "high-performance" }, fps: { target: 60, limit: 60, smoothStep: true }, disableContextMenu: true });
   window.__arcana = { game, G, V };
 })();

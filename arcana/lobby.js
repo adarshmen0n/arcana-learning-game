@@ -19,10 +19,12 @@ const Lobby = (() => {
       this.layers.push({ f: 0.6, o: add(this.add.tileSprite(0, GROUND, W, H - GROUND, th.ground).setOrigin(0).setDepth(6)) });
       this.layers.push({ f: 0.9, o: add(this.add.tileSprite(0, H - 260, W, 260, th.fg).setOrigin(0).setDepth(20)) });
       const tint = Phaser.Display.Color.HexStringToColor(th.rays).color, fog = Phaser.Display.Color.HexStringToColor(th.fog).color;
+      if (!Art.LOW) {
       const rays = add(this.add.tileSprite(0, 0, W, H, "rays").setOrigin(0).setDepth(8).setBlendMode(Phaser.BlendModes.ADD).setTint(tint).setAlpha(0.5)); this.layers.push({ f: 0.1, o: rays });
       this.tweens.add({ targets: rays, alpha: 0.2, duration: 3600, yoyo: true, repeat: -1, ease: "Sine.inOut" });
-      this.fogs = [add(this.add.tileSprite(0, GROUND - 200, W, 260, "fogbank").setOrigin(0).setDepth(5.5).setTint(fog).setAlpha(0.35)), add(this.add.tileSprite(0, GROUND - 120, W, 260, "fogbank").setOrigin(0).setDepth(19).setTint(fog).setAlpha(0.2))];
-      for (const d of th.drift || []) { const t = add(this.add.tileSprite(0, d.y, W, d.h, d.key).setOrigin(0).setDepth(d.d).setAlpha(d.alpha)); if (d.add) t.setBlendMode(Phaser.BlendModes.ADD); this.layers.push({ f: d.f * 0.3, o: t, speed: d.speed }); }
+      }
+      this.fogs = [add(this.add.tileSprite(0, GROUND - 200, W, 260, "fogbank").setOrigin(0).setDepth(5.5).setTint(fog).setAlpha(0.35))]; if (!Art.LOW) this.fogs.push(add(this.add.tileSprite(0, GROUND - 120, W, 260, "fogbank").setOrigin(0).setDepth(19).setTint(fog).setAlpha(0.2)));
+      for (const d of (Art.LOW ? [] : th.drift || [])) { const t = add(this.add.tileSprite(0, d.y, W, d.h, d.key).setOrigin(0).setDepth(d.d).setAlpha(d.alpha)); if (d.add) t.setBlendMode(Phaser.BlendModes.ADD); this.layers.push({ f: d.f * 0.3, o: t, speed: d.speed }); }
       if (this.textures.exists("spark")) {
         const P = th.particles || { life: [3000, 6000], vy: [-30, -10], vx: [-10, 10], color: [0x39ff14] };
         add(this.add.particles(0, 0, "spark", { x: { min: 0, max: W }, y: { min: 0, max: H }, lifespan: { min: 3500, max: 7000 }, speedY: { min: -26, max: -8 }, speedX: { min: -8, max: 8 }, scale: { start: 0.35, end: 0 }, alpha: { start: 0.7, end: 0 }, blendMode: "ADD", frequency: Art.LOW ? 320 : 120, tint: Phaser.Display.Color.HexStringToColor(th.accent || "#39ff14").color }).setDepth(21));
@@ -56,7 +58,7 @@ const Lobby = (() => {
   function start(parent, opts) {
     want = { ...want, ...opts };
     if (game) { sc && (sc.applyHero(want.gender)); return; }
-    game = new Phaser.Game({ type: Phaser.AUTO, parent, width: W, height: H, transparent: false, backgroundColor: "#020503", scale: { mode: Phaser.Scale.ENVELOP, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [LobbyScene], render: { antialias: true, antialiasGL: !Art.LOW, powerPreference: Art.LOW ? "low-power" : "default" }, fps: { target: Art.LOW ? 30 : 60 }, audio: { noAudio: true } });
+    game = new Phaser.Game({ type: Phaser.AUTO, parent, width: W, height: H, transparent: false, backgroundColor: "#020503", scale: { mode: Phaser.Scale.ENVELOP, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [LobbyScene], render: { antialias: true, antialiasGL: !Art.LOW, powerPreference: Art.LOW ? "low-power" : "default" }, fps: { target: Art.LOW ? 30 : 60, limit: Art.LOW ? 30 : 60 }, audio: { noAudio: true } });
   }
   function celebrate() {                                   // level up / reward: burst of light and a victory pose
     if (!sc || !sc.rig) return; const s = sc, x = s.heroX, y = GROUND - 120, col = Phaser.Display.Color.HexStringToColor(People.SPECS.hero_m.glow || "#39ff14").color;
@@ -65,7 +67,11 @@ const Lobby = (() => {
     const ring = s.add.circle(x, GROUND + 6, 30).setStrokeStyle(6, col, 1).setDepth(9); s.tweens.add({ targets: ring, scaleX: 9, scaleY: 1.6, alpha: 0, duration: 900, onComplete: () => ring.destroy() });
     s.cameras.main.flash(250, 255, 255, 255); s.busy = true; s.rig.play("victory", {}); setTimeout(() => { if (s.rig) { s.rig.release && s.rig.release(); s.rig.recover && s.rig.recover(); } s.busy = false; }, 2200);
   }
-  function pause(on) { if (game && game.loop) on ? game.loop.sleep() : game.loop.wake(); }   // other menu screens freeze the stage: no wasted frames
+  let paused = false, offscreen = false;
+  const apply = () => { if (game && game.loop) (paused || offscreen || document.hidden) ? game.loop.sleep() : game.loop.wake(); };
+  function pause(on) { paused = on; apply(); }
+  addEventListener("scroll", () => { const off = innerWidth < 900 && scrollY > innerHeight * 0.55; if (off !== offscreen) { offscreen = off; apply(); } }, { passive: true });   // banner scrolled away: stop drawing
+  document.addEventListener("visibilitychange", apply);   // other menu screens freeze the stage: no wasted frames
   function setLook(look) { want.look = look; if (sc) sc.applyHero(want.gender); }
   function side(x) { if (sc) sc.targetX = x * W; }        // slide the hero left/right (0..1) so panels never cover them
   function setGender(g) { want.gender = g; if (sc) sc.applyHero(g); }

@@ -415,3 +415,12 @@ body.fighting #arc-btn.ingame { display: none; }   /* Arc Search is locked in fi
 #rotate .btn.primary { margin-top: 10px; padding: 14px 26px; font: 700 15px var(--head); letter-spacing: .14em; color: #021; background: var(--neon); border: 0; clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
 #rotate .rotback { color: var(--muted); font-size: 12px; letter-spacing: .12em; margin-top: 4px; }
 #rotate span { padding: 0 18px; line-height: 1.5; }
+
+/* ===================== phones and weak PCs: drop effects that cost a full screen of pixels every frame ===================== */
+.lowgfx #fx { display: none; }                                   /* scanline overlay blended over the whole game */
+.lowgfx *, .lowgfx *::before, .lowgfx *::after { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+.lowgfx .btn.primary, .lowgfx #nodes i.cur, .lowgfx #title .logo, .lowgfx #title .press, .lowgfx .caret { animation: none !important; }
+.lowgfx .panel { animation-duration: .18s !important; }
+.lowgfx .panel, .lowgfx .panel.out, .lowgfx .ghost { filter: none !important; }
+@keyframes panelInLow { from { opacity: 0; transform: translateY(14px); } }
+.lowgfx .panel { animation-name: panelInLow !important; }

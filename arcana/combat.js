@@ -36,14 +36,16 @@ const Combat = (() => {
     // waves: an ambush is 2 waves, an elite fight 3 waves and a champion. Difficulty follows the student's mastery, so it stays winnable.
     const d = (adapt && adapt.difficulty) || 3, cidx = G.chapterIdx || 0, first = cidx < 1 && index === 0, adj = (d >= 4 ? 1 : 0) - (d <= 2 ? 1 : 0);
     const sizes = (index === 0 ? (first ? [2, 3] : [3, 4]) : [3, 4, 4]).map((n) => Math.max(2, n + adj));
-    const kinds = first ? ["brute"] : index === 0 ? ["brute", "caster", "brute", "guardian", "dasher"] : ["brute", "caster", "guardian", "dasher", "brute", "dasher", "caster"];
+    const ROSTERS = [["brute", "caster", "brute", "guardian", "dasher"], ["dasher", "dasher", "brute", "caster"], ["guardian", "caster", "caster", "brute"], ["brute", "brute", "dasher", "guardian"],
+      ["caster", "dasher", "guardian", "dasher"], ["guardian", "brute", "caster", "dasher", "brute"], ["dasher", "caster", "brute", "brute", "guardian"]];
+    const kinds = first ? ["brute"] : ROSTERS[(cidx * 2 + index) % ROSTERS.length];      // every chapter has its own enemy line-up
     const suffix = { brute: ["Thrall", "Revenant"], caster: ["Wraith", "Shade"], dasher: ["Stalker", "Blade"], guardian: ["Sentinel", "Bulwark"] };
     const STOP = new Set(["of", "the", "and", "in", "to", "a", "an", "for", "on", "with", "by", "is"]);
     const two = (c) => { const w = c.split(/\s+/).slice(0, 3); while (w.length > 1 && (w.length > 2 || STOP.has(w[w.length - 1].toLowerCase()))) w.pop(); return w.join(" "); };   // "Products of X" -> "Products"
     const fact = (i) => uniq[i % Math.max(1, uniq.length)] || { concept: "Knowledge", text: "Keep learning: every fact you collect makes the next fight easier." };
     const enemies = []; let i = 0;
     sizes.forEach((n, w) => { for (let j = 0; j < n; j++, i++) { const f = fact(i), k = kinds[(i + w) % kinds.length]; enemies.push({ kind: k, wave: w, name: (two(f.concept) + " " + suffix[k][(i + index) % 2]).toUpperCase(), fact: f }); } });
-    if (index > 0) { const f = fact(i); enemies.push({ kind: d >= 3 ? "guardian" : "brute", wave: sizes.length - 1, champion: true, name: (two(f.concept) + " Warlord").toUpperCase(), fact: { ...f, big: true } }); }
+    if (index > 0) { const f = fact(i); enemies.push({ kind: d >= 3 ? ["guardian", "brute", "dasher", "guardian", "caster"][cidx % 5] : "brute", wave: sizes.length - 1, champion: true, name: (two(f.concept) + " Warlord").toUpperCase(), fact: { ...f, big: true } }); }
     return { title: index === 0 ? "Ambush" : "Elite ambush", waves: sizes.length, enemies };
   }
 
@@ -130,7 +132,9 @@ const Combat = (() => {
       speed: ({ caster: 120, guardian: 78 }[spec.kind] || 105) * (0.85 + 0.07 * d), dmg: base * (0.7 + 0.15 * d) * (1 + 0.05 * cidx),
       wind: spec.kind === "guardian" ? Math.max(0.6, 1.0 - 0.06 * d) : Math.max(0.32, 0.72 - 0.06 * d) };
     e.maxHp = e.hp = Math.round(({ caster: 55, guardian: 130 }[spec.kind] || 80) * (0.8 + 0.12 * d) * (1 + 0.1 * cidx) * (spec.champion ? 2.4 : 1));
-    if (spec.champion) { e.dmg *= 1.25; e.wind *= 0.9; e.champion = true; rig.all.forEach((im) => im.setTint(0xffe2b0)); }
+    e.baseTint = spec.champion ? 0xffe2b0 : [0, 0xb8c8ff, 0xffc89a, 0xc8ffb8, 0xe0b8ff, 0xffb8c8, 0xb8fff4][cidx % 7];   // each chapter's enemies wear their own colours
+    if (e.baseTint) rig.all.forEach((im) => im.setTint(e.baseTint));
+    if (spec.champion) { e.dmg *= 1.25; e.wind *= 0.9; e.champion = true; }
     return e;
   }
   function drawBar(e) {
@@ -139,7 +143,7 @@ const Combat = (() => {
     if (e.kind === "guardian" && e.broken <= 0 && e.state !== "dead") e.bar.lineStyle(2, 0xffb347, 1).strokeRect(-w / 2 - 2, y - 2, w + 4, 10);
     e.label.y = -(170 * e.sc) - 26 - e.ay; e.tip.y = -(170 * e.sc) - 52 - e.ay;
   }
-  function setTint(e, on, col = 0xff7070) { e.rig.all.forEach((i) => (on ? i.setTint(col) : e.champion ? i.setTint(0xffe2b0) : i.clearTint())); }
+  function setTint(e, on, col = 0xff7070) { e.rig.all.forEach((i) => (on ? i.setTint(col) : e.baseTint ? i.setTint(e.baseTint) : i.clearTint())); }
   const canExecute = (e) => e.state !== "dead" && e.hp <= e.maxHp * 0.35 && ["stagger", "down", "getup"].includes(e.state);
   const guarding = (e, scene) => e.state !== "dead" && e.broken <= 0 && ((e.kind === "guardian" && ["approach", "windup"].includes(e.state)) || e.block > 0) && (scene.hx - e.x) * (e.dir || Math.sign(scene.hx - e.x)) > 0;
 

@@ -59,7 +59,7 @@ class World extends Phaser.Scene {
   previewHero(gender) { this.focus = gender; }
 
   // ---- theme / layers ----
-  setTheme(name) {
+  setTheme(name, variant = 0) {
     const th = Art.buildTheme(this, name); this.theme = th;
     this.themeObjs.forEach((o) => o.destroy()); this.themeObjs = [];
     const add = (o) => (this.themeObjs.push(o), o);
@@ -85,8 +85,14 @@ class World extends Phaser.Scene {
       if (d.pulse) this.tweens.add({ targets: t, alpha: d.alpha * 0.45, duration: 3500 + Math.random() * 2500, yoyo: true, repeat: -1, ease: "Sine.inOut" });
       this.drifts.push({ o: t, f: d.f, speed: d.speed, t: 0 });
     }
+    const V = VARIANTS[variant % VARIANTS.length];          // dusk, night, storm, ...: tint the painted layers and add weather
+    if (V.tint) for (const o of this.themeObjs) if (o.setTint && o.blendMode !== Phaser.BlendModes.ADD && o.type !== "ParticleEmitter") o.setTint(V.tint);
+    if (V.weather === "rain") add(this.add.particles(0, 0, "spark", { x: { min: -200, max: W + 200 }, y: -20, lifespan: 900, speedY: { min: 900, max: 1200 }, speedX: -160, scaleX: 0.06, scaleY: { start: 1.6, end: 1.2 }, alpha: 0.35, tint: 0xbfdfff, frequency: LOW ? 40 : 14, quantity: 2 }).setScrollFactor(0).setDepth(21));
+    if (V.weather === "snow") add(this.add.particles(0, 0, "spark", { x: { min: 0, max: W }, y: -10, lifespan: 7000, speedY: { min: 40, max: 90 }, speedX: { min: -30, max: 30 }, scale: { min: 0.12, max: 0.3 }, alpha: 0.8, tint: 0xffffff, frequency: LOW ? 160 : 60 }).setScrollFactor(0).setDepth(21));
+    if (V.weather === "embers") add(this.add.particles(0, 0, "spark", { x: { min: 0, max: W }, y: H + 10, lifespan: 5000, speedY: { min: -120, max: -50 }, speedX: { min: -20, max: 20 }, scale: { start: 0.3, end: 0 }, blendMode: "ADD", tint: [0xff7a1a, 0xffd36a], frequency: LOW ? 160 : 70 }).setScrollFactor(0).setDepth(21));
+    if (V.flash) { const f = add(this.add.rectangle(0, 0, W, H, 0xdfe8ff, 0).setOrigin(0).setScrollFactor(0).setDepth(22)); this.time.addEvent({ delay: 5200, loop: true, callback: () => { if (Math.random() < 0.6) this.tweens.add({ targets: f, fillAlpha: { from: 0.35, to: 0 }, duration: 380 }); } }); }
     this.birds = [];
-    if (th.birds) for (let i = 0; i < (LOW ? 3 : 7); i++) this.birds.push({ o: add(this.add.image(0, 0, "bird").setScrollFactor(0).setDepth(2.5).setAlpha(0.75).setScale(0.8 + Math.random() * 0.6)), x0: Math.random() * (W + 300), y0: 90 + Math.random() * 230, v: 18 + Math.random() * 22, ph: Math.random() * 6 });
+    if (th.birds && !V.weather) for (let i = 0; i < (LOW ? 3 : 7); i++) this.birds.push({ o: add(this.add.image(0, 0, "bird").setScrollFactor(0).setDepth(2.5).setAlpha(0.75).setScale(0.8 + Math.random() * 0.6)), x0: Math.random() * (W + 300), y0: 90 + Math.random() * 230, v: 18 + Math.random() * 22, ph: Math.random() * 6 });
   }
 
   startTitle() {
@@ -96,7 +102,7 @@ class World extends Phaser.Scene {
   clearLevel() { this.entities.forEach((e) => e.root.destroy()); this.entities = []; this.orbs.forEach((o) => o.g.destroy()); this.orbs = []; if (this.exit) { this.exit.destroy(); this.exit = null; } this.prompt.setVisible(false); }
 
   build(ch) {
-    this.mode = "play"; this.setTheme(ch.theme.background); this.clearLevel(); this.chapter = ch;
+    this.mode = "play"; this.setTheme(ch.theme.background, ch.theme.variant != null ? ch.theme.variant : (G.chapterIdx || 0) >= 6 ? 1 : 0); this.clearLevel(); this.chapter = ch;
     this.hx = 140; this.hy = GROUND; this.vx = 0; this.vy = 0; this.camX = 0; this.face = 1; this.heroVisible(true); this.control = false; this.cinematic = false;
     ch.scenes.forEach((s, i) => { const e = this.makeEntity(s, FIRST + i * SPACING); e.i = i; this.entities.push(e); });
     this.exitX = FIRST + ch.scenes.length * SPACING; this.makeExit(this.exitX); this.makeOrbs(ch.scenes.length);
@@ -382,6 +388,8 @@ async function playArcade(scene, ent) {
   Sound.setMood(scene.theme.music); refreshHud();
 }
 const TEACHING = new Set(["npc", "tablet"]);
+// world variants: index 0 is the world as painted; later passes through the worlds use another time of day or weather
+const VARIANTS = [{}, { tint: 0xffb48a, weather: "embers" }, { tint: 0x8fa6ff, weather: "rain", flash: true }, { tint: 0xd8f0ff, weather: "snow" }, { tint: 0xc9a0ff }, { tint: 0xa8ffb0, weather: "rain" }, { tint: 0xff9a9a, weather: "embers" }];
 async function playScene(scene, ch, ent) {
   const s = ent.s; Track.ctx = { kind: s.type, chapter: ch.id };
   const quest = !TEACHING.has(s.type);

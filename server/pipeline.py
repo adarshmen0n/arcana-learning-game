@@ -29,6 +29,22 @@ MENTOR_NAMES = ["Mentor Aria", "Archivist Venn", "Sage Orin", "Captain Lyra"]
 ARCADES = [("maze", "Maze Run"), ("snake", "Snake Trail"), ("hill", "Hill Climb Rally"), ("shooter", "Invaders")]
 ROLES = ["intro", "core", "deep", "recap", "more"]
 THEMES = {"science": "crystal_cave", "nature": "ancient_forest", "conflict": "ember_citadel", "history": "desert_canyon", "abstract": "aurora_peaks"}
+WORLDS = ["crystal_cave", "ancient_forest", "ember_citadel", "desert_canyon", "aurora_peaks", "neon_grid"]
+BOSS_LOOKS = ["enforcer", "colossus", "rival"]
+
+
+def plan_worlds(plan):
+    """Give each chapter a different scene: its mood's world when that is fresh, otherwise the least-used world; repeats get a new variant (dusk, night, storm...)."""
+    used, last = {}, None
+    for ch in plan["chapters"]:
+        pref = THEMES.get(ch.get("mood"), "ancient_forest")
+        least = min(used.get(w, 0) for w in WORLDS)
+        options = [w for w in WORLDS if used.get(w, 0) == least and w != last] or [w for w in WORLDS if w != last]
+        world = pref if pref in options else options[0]
+        ch["_world"], ch["_variant"] = world, used.get(world, 0)
+        used[world] = used.get(world, 0) + 1
+        last = world
+    return plan
 JOBS: dict = {}
 MAX_PARALLEL = int(os.environ.get("ARCANA_PARALLEL_JOBS", "3"))      # builds running at once; the rest wait in line (protects the AI quotas)
 _slots = threading.BoundedSemaphore(MAX_PARALLEL)
@@ -119,7 +135,7 @@ class Job:
             return {"id": self.id, "status": self.status, "stage": self.stage, "pct": self.pct, "message": self.message, "mode": self.mode,
                     "error": self.error, "total": self.total, "ready": self.ready(), "logs": self.logs[-40:], "usage": dict(self.usage),
                     "title": (self.script or {}).get("title"),
-                    "script": self.script if self.script is not None and self.ready() >= 1 else None}
+                    "script": self.script if self.script is not None and self.status == "done" else None}
 
 
 def _keep_awake():
@@ -244,7 +260,7 @@ def _ai(job: Job, text: str):
               "boss_name: a menacing villain name (a warlord, sorcerer, beast-knight or similar) that fits the chapter (2-3 words). npc_names: four friendly human mentor names (different in every chapter).\n"
               "- final_boss_name: the villain of the final exam. summary: 2 sentences." + student.prompt_block(job.opts.get("profile")))
     plan = clean_plan(llm.call_json(SYS, prompt, ANALYZE_SCHEMA, doc=doc_block(marked), max_tokens=14000, tally=tally, log=job.log))
-    plan = align_parts(plan, parts)
+    plan = plan_worlds(align_parts(plan, parts))
     job.total = len(plan["chapters"])
     job.script = {"schemaVersion": 2, "projectId": job.id, "title": plan["title"], "audience": {"level": plan["level"], "modes": ["student"]},
                   "summary": plan["summary"], "chapters": [], "finalBoss": final_boss(plan),
@@ -319,7 +335,7 @@ def _ai(job: Job, text: str):
     job.set("chapter1", 30, "Forging chapter 1")
     job.chapters[0] = build(0)
     job.publish()
-    job.set("chapters", 55, "Chapter 1 ready: you can start playing")
+    job.set("chapters", 55, f"Chapter 1 of {job.total} built; building the rest")
     if job.total > 1:
         with cf.ThreadPoolExecutor(max_workers=llm.concurrency()) as ex:
             futs = {ex.submit(build, i): i for i in range(1, job.total)}
@@ -332,7 +348,7 @@ def _ai(job: Job, text: str):
 
 
 MAX_CHAPTERS = 20
-PART_WORDS = 450
+PART_WORDS = 220                     # about one topic per chapter; a 700-word PDF becomes 3 chapters, a 4,000-word one 18
 
 
 def split_parts(text):
@@ -343,6 +359,10 @@ def split_parts(text):
     while len(parts) > 1 and len(parts[-1].split()) < size * 0.35:   # fold a tiny tail into the previous part
         tail = parts.pop()
         parts[-1] = parts[-1] + " " + tail
+    if len(parts) == 1 and words >= 250:                              # even short notes become at least two chapters
+        halves = retrieval.split(text, size=-(-words // 2), overlap=0)
+        if len(halves) >= 2:
+            parts = [halves[0], " ".join(halves[1:])]
     return parts or [text]
 
 
@@ -471,7 +491,7 @@ def gen_chapter(job, plan, i, doc, index=None, part=None):
         gen["_coverage"] = round(pct, 2)
     taught = lesson_text(gen)
     focus = ("\nWhat the lessons taught in this chapter (ask ONLY about ideas explained here, so every question checks something the student was taught):\n" + taught + "\n\n") if taught else "\n"
-    qa = head + focus + "Write quiz questions for this chapter.\n- obstacles: 2 questions, each with a hint that nudges without revealing the answer.\n- match: 3 questions. arcade: 3 questions.\n\n" + rules
+    qa = head + focus + "Write quiz questions for this chapter.\n- obstacles: 2 questions, each with a hint that nudges without revealing the answer.\n- match: 3 questions. arcade: 6 questions (they are played in three mini-games).\n\n" + rules
     qb = head + focus + "Write more quiz questions for this chapter (test understanding and application of what was taught).\n- test: 4 questions. spare: 3 extra questions.\n\n" + rules
     job.log(f"Writing chapter {i + 1}: questions")
     set_a, set_b = _both(lambda: llm.call_json(SYS, qa, QUESTION_SET_A, doc=doc, max_tokens=12000, tally=job.usage, log=job.log),
@@ -579,7 +599,7 @@ def ground(job, gen, index, i):
 def _offline(job: Job, text: str):
     job.set("analyze", 20, "Analysing the text (offline mode)")
     plan, gens = mockgen.build(text, job.filename)
-    plan = clean_plan(plan)
+    plan = plan_worlds(clean_plan(plan))
     job.total = len(plan["chapters"])
     job.script = {"schemaVersion": 2, "projectId": job.id, "title": plan["title"], "audience": {"level": "general", "modes": ["student"]},
                   "summary": plan["summary"], "chapters": [], "finalBoss": final_boss(plan),
@@ -648,7 +668,7 @@ def assemble_chapter(i, n, ch, cons, gen, level):
             obstacles.append((q, str(o.get("hint", "")).strip()[:160] or "Think back to what the mentor said."))
     while len(obstacles) < 2 and spare:
         obstacles.append((spare.pop(0), "Think back to what the mentor said."))
-    match, arcade, test = take(gen.get("match", []), 3, 2), take(gen.get("arcade", []), 3, 1), take(gen.get("test", []), 4, 3)
+    match, arcade, test = take(gen.get("match", []), 3, 2), take(gen.get("arcade", []), 6, 1), take(gen.get("test", []), 4, 3)
 
     scenes = []
 
@@ -681,31 +701,36 @@ def assemble_chapter(i, n, ch, cons, gen, level):
            tablet={"title": str(t.get("title") or "Knowledge Tablet")[:60], "points": pts, "example": str(t.get("example", "")).strip()[:360],
                    "mistake": str(t.get("mistake", "")).strip()[:260], "terms": terms})
 
+    # three mini-games per chapter (three of Maze, Snake, Hill Climb, Invaders, rotating), placed between the lessons
+    pool = [dict(q) for q in (arcade or []) + [q for q, _ in obstacles] + (match or []) + (test or []) + spare]
+    games, k = [], 0
+    for n_ in range(3):
+        qs = [q for q in (arcade or [])[n_ * 2:n_ * 2 + 2]]
+        while len(qs) < 2 and pool:                          # the checker removed some mini-game questions: reuse this chapter's others
+            qs.append(dict(pool[k % len(pool)]))
+            k += 1
+        if qs:
+            kind = ARCADES[(i + n_) % len(ARCADES)]
+            games.append(lambda kind=kind, qs=qs: sc(kind[0], title=kind[1], questions=qs, ghosts=2))
+    with_arcade = bool(games)
     npc(0)                                                     # teach
     tablet(0)                                                  # teach
     npc(1)                                                     # teach
-    if not arcade:                                             # the checker removed the mini-game's questions: reuse this chapter's others (a mini-game is never dropped)
-        pool = [q for q, _ in obstacles] + (match or []) + (test or []) + spare
-        arcade = [dict(q) for q in pool[:3]] or None
-    with_arcade = bool(arcade)                                 # a mini-game in every chapter (it replaces the seal, so teaching stays above 60%)
-    if obstacles and not with_arcade:
+    if games:
+        games[0]()                                             # mini-game 1
+    elif obstacles:
         sc("obstacle", question=obstacles[0][0], hint=obstacles[0][1])
     tablet(1)                                                  # teach
     npc(2)                                                     # teach
     if match:
         sc("match", opponent={"name": "Rival Ranger", "kind": "sentinel", "skill": round(min(0.8, 0.55 + 0.05 * i), 2)}, questions=match)
-    if with_arcade:                                            # short games get two mini-games per chapter, so every game has Maze, Snake, Hill Climb and Invaders
-        kinds = [ARCADES[(2 * i) % len(ARCADES)], ARCADES[(2 * i + 1) % len(ARCADES)]] if n <= 2 else [ARCADES[i % len(ARCADES)]]
-        if len(kinds) == 2:
-            extra = [dict(q) for q in ((test or []) + (match or []) + [q for q, _ in obstacles])[:3]] or arcade
-            sets = [arcade, extra]
-        else:
-            sets = [arcade]
-        for kind, qs in zip(kinds, sets):
-            sc(kind[0], title=kind[1], questions=qs, ghosts=2)
+    if len(games) > 1:
+        games[1]()                                             # mini-game 2
     for j in range(4, len(gen.get("npcs", []))):              # extra lessons that close coverage gaps
         npc(j)
     npc(3)                                                     # teach (recap)
+    if len(games) > 2:
+        games[2]()                                             # mini-game 3
     m = gen.get("mission") or {}
     items = [str(x).strip()[:120] for x in m.get("items", []) if str(x).strip()]
     pairs = [[str(p_["term"]).strip()[:60], str(p_["definition"]).strip()[:90]] for p_ in m.get("pairs", []) if p_.get("term") and p_.get("definition")]
@@ -716,9 +741,9 @@ def assemble_chapter(i, n, ch, cons, gen, level):
     if test:
         sc("level_test", questions=test, passMark=max(1, len(test) - 1))
     spare_all = spare + [q for q, _ in obstacles[(0 if with_arcade else 1):]]
-    sc("mini_boss", boss={"name": str(ch.get("boss_name") or "Rogue Enforcer")[:30], "kind": "enforcer" if i % 2 == 0 else "colossus", "fight": ch.get("fight", "martial")},
+    sc("mini_boss", boss={"name": str(ch.get("boss_name") or "Rogue Enforcer")[:30], "kind": BOSS_LOOKS[i % len(BOSS_LOOKS)], "fight": ch.get("fight", "martial")},
        pool="chapter", count=5, questions=spare_all[:6])
-    return {"id": f"ch{i + 1}", "title": str(ch["title"])[:60], "goal": str(ch["goal"])[:140], "theme": {"background": THEMES.get(ch.get("mood"), "ancient_forest")}, "coverage": gen.get("_coverage"),
+    return {"id": f"ch{i + 1}", "title": str(ch["title"])[:60], "goal": str(ch["goal"])[:140], "theme": {"background": ch.get("_world") or THEMES.get(ch.get("mood"), "ancient_forest"), "variant": ch.get("_variant", i // len(WORLDS))}, "coverage": gen.get("_coverage"),
             "concepts": [{"id": c["id"], "name": c["name"][:60], **({"sources": c["sources"]} if c.get("sources") else {})} for c in cons], "scenes": scenes}
 
 

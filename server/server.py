@@ -47,6 +47,28 @@ def _load_static(path):
     return entry
 
 
+import re as _re
+
+
+def _build_id():
+    """Fingerprint of every script and style file: changes with any update, so pages always load matching, fresh files."""
+    h = hashlib.md5()
+    for f in sorted(os.listdir(WEB)):
+        if f.endswith((".js", ".css")):
+            st = os.stat(os.path.join(WEB, f))
+            h.update(f"{f}:{st.st_mtime_ns}:{st.st_size}".encode())
+    return h.hexdigest()[:10]
+
+
+def _stamp_html(raw):
+    """Add ?v=<build> to the page's own scripts and styles, and tell the page its build for scripts it loads later."""
+    v = _build_id()
+    html = raw.decode("utf-8")
+    html = _re.sub(r'((?:src|href)=")([a-z0-9][a-z0-9\-]*\.(?:js|css))(")', lambda m: f"{m.group(1)}{m.group(2)}?v={v}{m.group(3)}", html)
+    html = html.replace("<head>", f'<head><script>window.ARCANA_BUILD="{v}"</script>', 1)
+    return html.encode("utf-8")
+
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     cache_rule = "no-store"
 
@@ -110,7 +132,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except OSError:
             return super().do_GET()
         name = os.path.basename(path)
-        self.cache_rule = "public, max-age=86400" if name.endswith((".png", ".webp", ".jpg", ".ico", ".woff2")) else "no-cache"   # code is always checked (a cheap 304 when unchanged), so a deploy never mixes old and new files
+        if name.endswith(".html"):                             # pages: stamp fresh file versions in (computed per request, never cached)
+            raw = _stamp_html(raw)
+            zipped = gzip.compress(raw, 6)
+            etag = '"' + hashlib.md5(raw).hexdigest()[:16] + '"'
+        stamped = "v=" in (urlsplit(self.path).query or "") and name.endswith((".js", ".css"))
+        self.cache_rule = "public, max-age=31536000, immutable" if stamped else "public, max-age=86400" if name.endswith((".png", ".webp", ".jpg", ".ico", ".woff2")) else "no-cache"   # code is always checked (a cheap 304 when unchanged), so a deploy never mixes old and new files
         if self.headers.get("If-None-Match") == etag:
             self.send_response(304)
             self.send_header("ETag", etag)

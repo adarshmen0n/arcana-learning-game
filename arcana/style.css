@@ -448,3 +448,10 @@ body.arcading #hint, body.arcading #arc-btn, body.arcading #touch > div:last-chi
 #pausebox p { margin: 0 0 6px; font-size: 14px; }
 #pausebox .btn { width: 100%; text-align: center; }
 #pausebtn b { font: 900 12px var(--head); letter-spacing: -.05em; }
+
+/* the pause button says what it is */
+#hud .iconbtn.menubtn { width: auto; aspect-ratio: auto; height: clamp(28px, 3cqw, 40px); padding: 0 clamp(8px, 1cqw, 14px); display: inline-flex; gap: 6px; align-items: center; border-color: var(--neon); color: var(--neon); }
+#hud .iconbtn.menubtn span { font: 700 clamp(9px, .95cqw, 13px) var(--head); letter-spacing: .18em; }
+/* wide or tall windows: the side bands match the game instead of plain black */
+#stage { background: radial-gradient(ellipse at center, #06200e 0%, #020805 55%, #000 100%); }
+#frame { box-shadow: 0 0 0 1px rgba(57,255,20,.18), 0 0 40px rgba(57,255,20,.12); }

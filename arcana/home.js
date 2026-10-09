@@ -250,7 +250,7 @@ function blip(f = 520, d = 0.04, v = 0.025) { const n = performance.now(); if (n
 document.addEventListener("pointerover", (e) => { const t = e.target.closest && e.target.closest(".gbtn,#nav button,.rowi,.eq,.nx,.qm"); if (t && t !== document.__lastBlipEl) { document.__lastBlipEl = t; blip(760, 0.03, 0.012); } });
 document.addEventListener("click", (e) => { if (e.target.closest && e.target.closest(".gbtn,#nav button,.eq,.qm")) blip(380, 0.07, 0.03); });
 
-function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = rej; document.head.appendChild(el); }); }
+function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = /^https?:/.test(src) ? src : src + "?v=" + (window.ARCANA_BUILD || Date.now()); el.onload = res; el.onerror = rej; document.head.appendChild(el); }); }
 async function startStage() {
   document.body.classList.add("hub"); if (!$("#stagebg")) { const d = document.createElement("div"); d.id = "stagebg"; document.body.prepend(d); }
   const node = S.rm && S.rm.games.map((g) => g.nodes.find((n) => n.status === "current")).find(Boolean), theme = (node && node.theme && node.theme.background) || "neon_grid";

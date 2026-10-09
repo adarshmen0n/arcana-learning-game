@@ -117,10 +117,27 @@ class Job:
                     "script": self.script if self.script is not None and self.ready() >= 1 else None}
 
 
+def _keep_awake():
+    """Free hosting sleeps after 15 idle minutes, which would kill a game being built if the student closes the app.
+    While any job runs, the server pings its own public address every 4 minutes."""
+    import urllib.request
+    url = config.PUBLIC_URL
+    while url and any(j.status in ("queued", "running") for j in JOBS.values()):
+        try:
+            urllib.request.urlopen(url + "/api/status", timeout=20).read()
+        except Exception:
+            pass
+        time.sleep(240)
+    _keep_awake.on = False
+
+
 def start(filename, data=None, text=None, opts=None) -> Job:
     job = Job(filename, data, text, opts)
     JOBS[job.id] = job
     threading.Thread(target=_run, args=(job,), daemon=True).start()
+    if not getattr(_keep_awake, "on", False):
+        _keep_awake.on = True
+        threading.Thread(target=_keep_awake, daemon=True).start()
     return job
 
 

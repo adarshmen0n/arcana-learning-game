@@ -6,7 +6,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA = pathlib.Path(os.environ.get("ARCANA_DATA", ROOT / "data"))
 DATA.mkdir(parents=True, exist_ok=True)
 HOSTED = os.environ.get("ARCANA_HOSTED", "").lower() in ("1", "true", "yes")      # public deployment: login required to create games
-MAX_GAMES_PER_DAY = int(os.environ.get("ARCANA_MAX_GAMES_PER_DAY", "5"))             # per teacher, protects free AI quotas
+MAX_GAMES_PER_DAY = int(os.environ.get("ARCANA_MAX_GAMES_PER_DAY", "0"))             # optional cap per student per day; 0 = unlimited (the AI router queues and fails over instead)
 SECURE_COOKIE = HOSTED                                                              # cookies need https when hosted
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()                    # enables "Continue with Google" (Google Cloud OAuth web client)

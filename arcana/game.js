@@ -524,7 +524,11 @@ async function goLandscape() {
   try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock("landscape"); } catch (e) {}
 }
 { const b = document.getElementById("gofull"); if (b) b.onclick = goLandscape; }
-if (matchMedia("(pointer: coarse)").matches) addEventListener("pointerdown", () => { if (!document.fullscreenElement && matchMedia("(orientation: landscape)").matches) goLandscape(); }, { once: true });
+if (matchMedia("(pointer: coarse)").matches) {
+  const app = matchMedia("(display-mode: standalone), (display-mode: fullscreen)").matches;
+  if (app && screen.orientation && screen.orientation.lock) screen.orientation.lock("landscape").catch(() => {});   // installed app: the game turns sideways on its own
+  addEventListener("pointerdown", () => { if (!document.fullscreenElement) goLandscape(); }, { once: true });     // browser: the first tap goes full screen sideways
+}
 
 // touch controls
 if (matchMedia("(pointer: coarse)").matches) {

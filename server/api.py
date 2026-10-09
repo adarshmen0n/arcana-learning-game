@@ -483,7 +483,7 @@ def job_create(r):
     busy = sum(1 for j in pipeline.JOBS.values() if j.opts.get("owner") == u["id"] and j.status in ("queued", "running"))
     if busy >= 2:
         raise Err(429, "Two games are already being built for you. Wait for one to finish.")
-    if not admin and db.games_today(u["id"]) + busy >= config.MAX_GAMES_PER_DAY:
+    if not admin and config.MAX_GAMES_PER_DAY and db.games_today(u["id"]) + busy >= config.MAX_GAMES_PER_DAY:
         raise Err(429, f"Daily limit reached ({config.MAX_GAMES_PER_DAY} new games per day). Try again tomorrow.")
     filename = clean(r.body.get("filename") or "notes.txt", 120)
     opts = {"offline": bool(r.body.get("offline")), "owner": u["id"]}

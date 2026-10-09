@@ -459,8 +459,15 @@ function wireUpload() {
       const data = file ? await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.onerror = rej; fr.readAsDataURL(file); }) : null;
       const job = await api("/api/jobs", "POST", file ? { filename: file.name, data } : { filename: "pasted-notes.txt", text });
       $("#msg").innerHTML = '<div class="pbar"><i id="pf"></i></div><p id="pm" class="muted small"></p><div id="pb"></div>';
+      let misses = 0;
       const tick = async () => {
-        const j = await api("/api/jobs/" + job.id);
+        let j;
+        try { j = await api("/api/jobs/" + job.id); misses = 0; }
+        catch (er) {                                      // a dropped connection: keep trying; a lost job (server restarted): say so
+          if (/unknown job/i.test(er.message) || ++misses > 40) { if ($("#msg")) $("#msg").innerHTML = '<div class="err">The server restarted while building your game. Please press Forge my game again.</div>'; if ($("#go")) $("#go").disabled = false; return; }
+          if ($("#pm")) $("#pm").textContent = "Reconnecting...";
+          return setTimeout(tick, 3000);
+        }
         if ($("#pf")) { $("#pf").style.width = j.pct + "%"; $("#pm").textContent = j.error ? j.error : j.message + (j.total ? ` (${j.ready}/${j.total} chapters)` : ""); }
         if (j.ready >= 1 && j.script && j.status !== "done" && $("#pb")) $("#pb").innerHTML = `<a class="gbtn hero" href="/play.html?job=${encodeURIComponent(job.id)}">Play chapter 1 now</a>`;
         if (j.status === "done") { toast("Game ready: " + (j.title || "")); await refresh(); return; }
@@ -485,6 +492,8 @@ async function refresh() {
   bootScreen(true); S.lb = null; await load(); dash(); setTimeout(() => { bootScreen(false); checkLevelUp(); setTimeout(dailyPop, 700); }, 650);
   if (S.coach && S.coach.aiPending) setTimeout(async () => { try { S.coach = await api("/api/coach"); const el = $("#coach"); if (el && S.coach.ai) el.outerHTML = coachCard(S.coach); } catch (e) {} }, 20000);
 }
+// installed phone app: menus stay upright (the game page turns itself sideways)
+if (matchMedia("(pointer: coarse)").matches && matchMedia("(display-mode: standalone), (display-mode: fullscreen)").matches && screen.orientation && screen.orientation.lock) screen.orientation.lock("portrait").catch(() => {});
 async function boot() {
   try { S.user = (await api("/api/me")).user; } catch (e) { app.innerHTML = '<div class="card auth"><div class="err">Cannot reach the server.</div></div>'; return; }
   const reset = new URLSearchParams(location.search).get("reset");

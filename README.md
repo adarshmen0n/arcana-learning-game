@@ -33,7 +33,7 @@ If a service hits its limit or errors, the next one takes over automatically. Ke
 3. In the service's **Environment** tab paste your keys (`GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, optional `ANTHROPIC_API_KEY`).
 4. Open the `onrender.com` address and create a student account.
 
-Every upload needs a login. Each student can build `ARCANA_MAX_GAMES_PER_DAY` games a day (default 5) to protect free AI quotas. `ARCANA_HOSTED=1` makes the session cookie Secure (HTTPS only).
+Every upload needs a login. There is no daily game limit by default (set `ARCANA_MAX_GAMES_PER_DAY` to add one). A student can build two games at once; when the free AI services are busy, the router waits and switches to the next one. `ARCANA_HOSTED=1` makes the session cookie Secure (HTTPS only).
 
 **Keep data on the free plan:** Render's free web service has a temporary disk and sleeps after 15 minutes without visits. Create a free Postgres database at https://neon.tech (or supabase.com), copy its connection string and set it as `DATABASE_URL` (in `.env`, then `python server/deploy_render.py`, or in the Render Environment tab). Accounts, games, answers, mastery and roadmaps are then stored there and survive restarts. Without `DATABASE_URL` the app uses a local SQLite file, which Render's free plan erases on every restart.
 

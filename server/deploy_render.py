@@ -44,7 +44,7 @@ def main():
         sys.exit(f"Could not list Render workspaces ({code}): {owners}")
     owner = (owners[0].get("owner") or owners[0])
     print("Workspace:", owner.get("name"), "|", owner.get("email", ""))
-    env = [{"key": "ARCANA_HOSTED", "value": "1"}, {"key": "ARCANA_MAX_GAMES_PER_DAY", "value": "5"}, {"key": "PYTHON_VERSION", "value": "3.12.7"}]
+    env = [{"key": "ARCANA_HOSTED", "value": "1"}, {"key": "ARCANA_MAX_GAMES_PER_DAY", "value": "0"}, {"key": "PYTHON_VERSION", "value": "3.12.7"}]
     env += [{"key": k, "value": os.environ[k]} for k in SECRETS if os.environ.get(k)]
     print("Environment variables to set:", ", ".join(e["key"] for e in env))
 

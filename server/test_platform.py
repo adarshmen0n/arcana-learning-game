@@ -125,9 +125,11 @@ ok(A.call("GET", "/api/roadmap")[1]["achievements"][1]["earned"], "achievements 
 print("uploads + limits")
 ok(Client().call("POST", "/api/jobs", {"text": "x" * 500})[0] == 401, "uploading needs a login")
 ok(A.call("POST", "/api/jobs", {})[0] == 400, "an empty upload is refused")
+config.MAX_GAMES_PER_DAY = 3                                     # the cap is optional (0 = unlimited); check it still works when set
 for i in range(config.MAX_GAMES_PER_DAY):
     db.add_game(f"fill{i}aaaa", uid_a, "x")
-ok(A.call("POST", "/api/jobs", {"text": "word " * 200})[0] == 429, "the daily limit protects the free AI quota")
+ok(A.call("POST", "/api/jobs", {"text": "word " * 200})[0] == 429, "an optional daily cap is enforced when set")
+config.MAX_GAMES_PER_DAY = 0
 for i in range(11):
     last = Client().call("POST", "/api/login", {"login": "alex_9", "password": "nope" + str(i)})[0]
 ok(last == 429, "repeated wrong passwords are rate-limited")

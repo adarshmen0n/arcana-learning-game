@@ -13,7 +13,7 @@ services:
       - key: ARCANA_HOSTED
         value: "1"
       - key: ARCANA_MAX_GAMES_PER_DAY
-        value: "5"
+        value: "0"
       # Secrets: paste these in the Render dashboard (they are not stored in the repo).
       - key: GEMINI_API_KEY
         sync: false

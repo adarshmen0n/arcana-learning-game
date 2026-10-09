@@ -36,6 +36,16 @@ function pickQs(pool, n) {                                    // favour weak top
   return pool.map((q) => ({ q, s: Math.random() + (weak.has(q.conceptId) ? 1.2 : 0) - 0.35 * Math.abs((q.difficulty || 2) - t) })).sort((x, y) => y.s - x.s).slice(0, n).map((x) => x.q);
 }
 const questionsOf = (ch) => ch.scenes.flatMap((s) => (s.question ? [s.question] : s.questions || []));
+function finalExam(n = 20) {                                    // the final boss always asks exactly 20: every different question first, repeats only to fill up
+  const seen = new Set(), uniq = [];
+  for (const q of [...SCRIPT.chapters.flatMap(questionsOf), ...(SCRIPT.finalBoss.extraQuestions || [])]) {
+    const key = String(q.prompt || "").trim().toLowerCase();
+    if (key && !seen.has(key)) { seen.add(key); uniq.push(q); }
+  }
+  const out = pickQs(uniq, n);
+  for (let i = 0; out.length < n && uniq.length; i++) out.push({ ...uniq[i % uniq.length] });
+  return out;
+}
 
 class World extends Phaser.Scene {
   constructor() { super("world"); }
@@ -450,7 +460,7 @@ async function runScene(scene, ch, ent, s) {
   else if (ARCADE_INFO[s.type]) await playArcade(scene, ent);
   else if (s.type === "combat") await playCombat(scene, ent);
   else if (s.type === "mini_boss") await fightBoss(scene, ent, pickQs(questionsOf(ch), clamp(Math.min(s.count, 5) + A().bossCountDelta, 3, 7)), clamp(0.6 + A().bossRatioDelta, 0.4, 0.85), "Mini-boss");
-  else if (s.type === "final_boss") await fightBoss(scene, ent, pickQs([...SCRIPT.chapters.flatMap(questionsOf), ...(SCRIPT.finalBoss.extraQuestions || [])], 20), 0.85, "Final boss");   // the final exam: 20 questions, 17 right to win
+  else if (s.type === "final_boss") await fightBoss(scene, ent, finalExam(20), 0.85, "Final boss");   // the final exam: 20 questions, 17 right to win
 }
 
 // Personal review: when a topic keeps going wrong, the server writes a short extra lesson + fresh questions from the stored source.

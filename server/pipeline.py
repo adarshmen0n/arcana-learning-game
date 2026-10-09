@@ -297,7 +297,10 @@ def _ai(job: Job, text: str):
         lead = ("(Previously: " + ".".join(prev).strip()[-300:] + ")\n\n") if prev else ""
         return doc_block(lead + parts[i], notes)
 
+    build_patience = getattr(llm._patience, "s", 0)
+
     def build(i):
+        llm.patience(build_patience)
         for attempt in range(1, 7):
             try:
                 return gen_chapter(job, plan, i, doc_for(i), index, parts[i])
@@ -402,6 +405,18 @@ def final_boss(plan):
             "count": 15, "passMarkRatio": 0.7, "extraQuestions": []}
 
 
+def _both(fa, fb):
+    """Run two independent AI calls at the same time (each on its own key when several are configured)."""
+    wait = getattr(llm._patience, "s", 0)
+
+    def run(f):
+        llm.patience(wait)                               # worker threads keep the build's patience for busy AIs
+        return f()
+    with cf.ThreadPoolExecutor(max_workers=2) as ex:
+        a, b = ex.submit(run, fa), ex.submit(run, fb)
+        return a.result(), b.result()
+
+
 def gen_chapter(job, plan, i, doc, index=None, part=None):
     ch, byid = plan["chapters"][i], {c["id"]: c for c in plan["concepts"]}
     cons = [byid[c] for c in ch["concept_ids"] if c in byid]
@@ -432,9 +447,10 @@ def gen_chapter(job, plan, i, doc, index=None, part=None):
              "explanation: one sentence stating why the answer is right. concept_id must be one of the concept ids above. "
              "evidence: a short VERBATIM quote (max 160 characters) copied from the study material that proves the correct answer; never invent it. "
              "skill: recall, understand, apply or analyze, mixed across the set, with the harder skills toward the end. Never repeat a question.")
-    job.log(f"Writing chapter {i + 1}: lessons")
-    gen = llm.call_json(SYS, lessons, LESSON_SCHEMA, doc=doc, max_tokens=12000, tally=job.usage, log=job.log)
-    gen.update(llm.call_json(SYS, tablets, TABLET_SCHEMA, doc=doc, max_tokens=9000, tally=job.usage, log=job.log))
+    job.log(f"Writing chapter {i + 1}: lessons and knowledge tablets")
+    gen, tabs = _both(lambda: llm.call_json(SYS, lessons, LESSON_SCHEMA, doc=doc, max_tokens=12000, tally=job.usage, log=job.log),
+                      lambda: llm.call_json(SYS, tablets, TABLET_SCHEMA, doc=doc, max_tokens=9000, tally=job.usage, log=job.log))   # independent: written side by side
+    gen.update(tabs)
     if part:                                                      # coverage pass: anything in this part that was not taught gets an extra lesson
         pct, missed = coverage(part, gen)
         if missed and pct < 0.92:
@@ -458,8 +474,10 @@ def gen_chapter(job, plan, i, doc, index=None, part=None):
     qa = head + focus + "Write quiz questions for this chapter.\n- obstacles: 2 questions, each with a hint that nudges without revealing the answer.\n- match: 3 questions. arcade: 3 questions.\n\n" + rules
     qb = head + focus + "Write more quiz questions for this chapter (test understanding and application of what was taught).\n- test: 4 questions. spare: 3 extra questions.\n\n" + rules
     job.log(f"Writing chapter {i + 1}: questions")
-    gen.update(llm.call_json(SYS, qa, QUESTION_SET_A, doc=doc, max_tokens=12000, tally=job.usage, log=job.log))
-    gen.update(llm.call_json(SYS, qb, QUESTION_SET_B, doc=doc, max_tokens=12000, tally=job.usage, log=job.log))
+    set_a, set_b = _both(lambda: llm.call_json(SYS, qa, QUESTION_SET_A, doc=doc, max_tokens=12000, tally=job.usage, log=job.log),
+                         lambda: llm.call_json(SYS, qb, QUESTION_SET_B, doc=doc, max_tokens=12000, tally=job.usage, log=job.log))
+    gen.update(set_a)
+    gen.update(set_b)
     gen = verify(job, gen, doc, i)
     gen = dedupe(job, gen, i)
     if index is not None:
@@ -666,6 +684,9 @@ def assemble_chapter(i, n, ch, cons, gen, level):
     npc(0)                                                     # teach
     tablet(0)                                                  # teach
     npc(1)                                                     # teach
+    if not arcade:                                             # the checker removed the mini-game's questions: reuse this chapter's others (a mini-game is never dropped)
+        pool = [q for q, _ in obstacles] + (match or []) + (test or []) + spare
+        arcade = [dict(q) for q in pool[:3]] or None
     with_arcade = bool(arcade)                                 # a mini-game in every chapter (it replaces the seal, so teaching stays above 60%)
     if obstacles and not with_arcade:
         sc("obstacle", question=obstacles[0][0], hint=obstacles[0][1])
@@ -673,9 +694,15 @@ def assemble_chapter(i, n, ch, cons, gen, level):
     npc(2)                                                     # teach
     if match:
         sc("match", opponent={"name": "Rival Ranger", "kind": "sentinel", "skill": round(min(0.8, 0.55 + 0.05 * i), 2)}, questions=match)
-    if with_arcade:
-        kind = ARCADES[i % len(ARCADES)]
-        sc(kind[0], title=kind[1], questions=arcade, ghosts=2)
+    if with_arcade:                                            # short games get two mini-games per chapter, so every game has Maze, Snake, Hill Climb and Invaders
+        kinds = [ARCADES[(2 * i) % len(ARCADES)], ARCADES[(2 * i + 1) % len(ARCADES)]] if n <= 2 else [ARCADES[i % len(ARCADES)]]
+        if len(kinds) == 2:
+            extra = [dict(q) for q in ((test or []) + (match or []) + [q for q, _ in obstacles])[:3]] or arcade
+            sets = [arcade, extra]
+        else:
+            sets = [arcade]
+        for kind, qs in zip(kinds, sets):
+            sc(kind[0], title=kind[1], questions=qs, ghosts=2)
     for j in range(4, len(gen.get("npcs", []))):              # extra lessons that close coverage gaps
         npc(j)
     npc(3)                                                     # teach (recap)

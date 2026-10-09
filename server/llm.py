@@ -539,7 +539,10 @@ def has_web() -> bool:
 
 def concurrency() -> int:
     """Claude handles parallel chapters; free tiers do better one at a time."""
-    return 3 if any(isinstance(p, AnthropicProvider) and p.dead is None for p in PROVIDERS) else 1
+    if any(isinstance(p, AnthropicProvider) and p.dead is None for p in PROVIDERS):
+        return 3
+    alive = [p for p in PROVIDERS if p.dead is None]
+    return max(1, min(3, len(alive) - 1))                # several free keys: build a few chapters side by side
 
 
 def status():
@@ -569,6 +572,31 @@ def patience(seconds):
     _patience.s = seconds
 
 
+_rr, _busy_lock = [0], threading.Lock()
+
+
+def _spread(cands):
+    """Spread calls over several keys of the same service (gemini#1..#4): least busy first, then round robin.
+    Services keep their priority order, so a fast big-context service is still tried before a slower one."""
+    fams, order = {}, []
+    for p in cands:
+        f = p.name.split("#")[0]
+        if f not in fams:
+            fams[f] = []
+            order.append(f)
+        fams[f].append(p)
+    with _busy_lock:
+        _rr[0] += 1
+        n = _rr[0]
+    out = []
+    for f in order:
+        g = fams[f]
+        k = n % len(g)
+        g = g[k:] + g[:k]
+        out += sorted(g, key=lambda p: getattr(p, "busy", 0))
+    return out
+
+
 def _route(op, chars, *, need=None, log=None, wait_total=150):
     """Run op(provider) on the first provider that works; fail over on Skip."""
     wait_total = max(wait_total, getattr(_patience, "s", 0) or 0)
@@ -579,9 +607,11 @@ def _route(op, chars, *, need=None, log=None, wait_total=150):
             if not PROVIDERS:
                 raise LLMError("No AI provider is configured. Add at least one API key to the .env file.")
             raise LLMError("No configured AI provider can handle this request" + (" (the document is too long for the free plans; add a Gemini key, which accepts long documents)." if need is None else "."))
-        for p in cands:
+        for p in _spread(cands):
             if not p.ready():
                 continue
+            with _busy_lock:
+                p.busy = getattr(p, "busy", 0) + 1
             try:
                 out = op(p)
                 if tried and log:
@@ -591,6 +621,9 @@ def _route(op, chars, *, need=None, log=None, wait_total=150):
                 _apply(p, e, log)
                 notes.append(f"{p.name}: {e}")
                 tried.add(p.name)
+            finally:
+                with _busy_lock:
+                    p.busy -= 1
         waiting = [p for p in cands if p.dead is None and not p.ready()]
         if not waiting:
             raise LLMError("All AI providers failed: " + "; ".join(notes[-4:]))

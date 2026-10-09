@@ -430,6 +430,12 @@ async function playChapter(scene, ch, idx, total, at = 0) {
       if (s.type === "level_test" && !s.practice && s.questions.length > 4) { s.questions = s.questions.slice(0, 4); s.passMark = Math.min(s.passMark, 3); }
     }
     if (sc.filter((s) => s.type === "obstacle").length > 1) { const i2 = sc.map((s) => s.type).lastIndexOf("obstacle"); sc.splice(i2, 1); }
+    // older games: make sure this chapter has its mini-games (short games get two per chapter so every game has all four)
+    const KINDS = ["maze", "snake", "hill", "shooter"], nch = (SCRIPT.chapters || []).length || 1;
+    const want = nch <= 2 ? [KINDS[(2 * idx) % 4], KINDS[(2 * idx + 1) % 4]] : [KINDS[idx % 4]];
+    const qpool = sc.flatMap((s) => s.type === "obstacle" ? [s.question] : ["match", "level_test", ...KINDS].includes(s.type) ? s.questions || [] : []).filter(Boolean);
+    const at2 = () => { const k = sc.findIndex((s) => s.type === "level_test" || s.type === "mini_boss"); return k >= 0 ? k : sc.length; };
+    want.forEach((k, n) => { if (!sc.some((s) => s.type === k) && qpool.length) sc.splice(at2(), 0, { type: k, id: ch.id + "-a" + n, title: ARCADE_INFO[k].name, questions: qpool.slice(n * 3, n * 3 + 3).length ? qpool.slice(n * 3, n * 3 + 3) : qpool.slice(0, 3), ghosts: 2 }); });
     const e1 = { type: "combat", id: ch.id + "-c1", enc: Combat.plan(ch, 0, A()) }, e2 = { type: "combat", id: ch.id + "-c2", enc: Combat.plan(ch, 1, A()) };
     sc.splice(Math.max(1, n1 + 1), 0, e1); sc.splice(sc.length - 1, 0, e2);
   }

@@ -483,7 +483,7 @@ def clean_plan(plan):
 def final_boss(plan):
     return {"title": "The Final Boss", "goal": "Defeat the Sorcerer using everything you have learned", "theme": {"background": "ember_citadel"},
             "boss": {"name": "Dr Doom", "kind": "doom", "fight": "magic"},
-            "count": 20, "passMarkRatio": 0.85, "extraQuestions": []}             # the final exam: 20 questions, at least 17 right
+            "count": 20, "passMarkRatio": 0.75, "extraQuestions": []}             # the final exam: all 20 questions, then the verdict; 15 right wins
 
 
 def _both(fa, fb):

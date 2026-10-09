@@ -355,8 +355,7 @@ async function fightBoss(scene, ent, questions, passRatio, label) {
       if (r.correct) { right++; gain(15); UI.bossBar(true, { name: s.boss.name, pct: ((n - right) / n) * 100, left: `Question ${i + 1} / ${n}`, right: `Need ${need} correct` }); await Fight.heroAttack(scene, ent); }
       else {
         const out = hurt(scene, r.conceptId, true); await Fight.enemyAttack(scene, ent);
-        if (label === "Final boss") { if (i + 1 - right > n - need) break; }          // the final exam is decided by the 17-of-20 rule only; stop once it can no longer be reached
-        else if (out) { fainted = true; break; }
+        if (label !== "Final boss" && out) { fainted = true; break; }                 // the final exam always runs all 20 questions; the result comes at the end
       }
     }
     UI.bossBar(false);
@@ -460,7 +459,7 @@ async function runScene(scene, ch, ent, s) {
   else if (ARCADE_INFO[s.type]) await playArcade(scene, ent);
   else if (s.type === "combat") await playCombat(scene, ent);
   else if (s.type === "mini_boss") await fightBoss(scene, ent, pickQs(questionsOf(ch), clamp(Math.min(s.count, 5) + A().bossCountDelta, 3, 7)), clamp(0.6 + A().bossRatioDelta, 0.4, 0.85), "Mini-boss");
-  else if (s.type === "final_boss") await fightBoss(scene, ent, finalExam(20), 0.85, "Final boss");   // the final exam: 20 questions, 17 right to win
+  else if (s.type === "final_boss") await fightBoss(scene, ent, finalExam(20), 0.75, "Final boss");   // the final exam: 20 questions, 17 right to win
 }
 
 // Personal review: when a topic keeps going wrong, the server writes a short extra lesson + fresh questions from the stored source.

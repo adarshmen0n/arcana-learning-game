@@ -138,7 +138,7 @@ def rebuild(gemini_mode, groq_mode, order="claude,gemini,groq", claude=True):
 
 
 def run(text, name="notes.txt"):
-    job = pipeline.start(name, text=text)
+    job = pipeline.start(name, text=text, opts={"fresh": True})          # every case builds anew (skips the shared cache)
     t0 = time.time()
     while job.status in ("queued", "running") and time.time() - t0 < 90:
         time.sleep(0.1)
@@ -203,9 +203,10 @@ job = run(long_text)
 p = show("long document -> gemini only", job)
 assert p["status"] == "done" and SEEN["gemini"]      # planning needs the big-context model; chapters use retrieved passages and may fit smaller ones
 
-# 6. Everything failing gives a clear message, not a crash
+# 6. Everything failing still gives the student a playable quick game, and says why
 rebuild("rejected", "rejected", order="gemini,groq", claude=False)
 job = run(TEXT)
 p = show("all providers failing", job)
-assert p["status"] == "error" and "failed" in p["error"].lower(), p
+assert p["status"] == "done" and p["mode"] == "offline" and job.script.get("quick"), p["error"]
+assert any("quick version" in l["msg"] for l in p["logs"])
 print("\nALL OK")

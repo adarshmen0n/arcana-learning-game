@@ -42,6 +42,9 @@ def sources_md(cited):
     return "\n\n**Sources:** " + " · ".join(f"[{n}] [{w['title']}]({w['url']})" for n, w in cited) if cited else ""
 
 
+_CACHE = {}          # normalised first question -> (time, answer); shared by everyone, kept 6 hours
+
+
 def _sentences(text, n):
     parts = re.split(r"(?<=[.!?])\s+", re.sub(r"\s+", " ", text or "").strip())
     return " ".join(p for p in parts[:n] if p)
@@ -90,13 +93,23 @@ def ask(user, message, game_id=None, context=None):
         system += "\n\n<web_results>\n" + "\n\n".join(f"[{i + 1}] {w['title']} ({w['url']})\n{w['content']}" for i, w in enumerate(web)) + "\n</web_results>"
     msgs = [{"role": m["role"], "content": m["content"][:4000]} for m in past if m["role"] in ("user", "assistant")]
     msgs.append({"role": "user", "content": message})
+    key = re.sub(r"[^a-z0-9 ]", "", message.lower()).strip() if not past and not used and not ctx else None
+    hit = _CACHE.get(key) if key else None
+    if hit and time.time() - hit[0] < 6 * 3600:          # the same opening question asked by another student: reuse the answer, no AI call
+        answer = hit[1]
+    else:
+        answer = None
     try:
-        answer = llm.chat(system, msgs, max_tokens=1800)
+        answer = answer or llm.chat(system, msgs, max_tokens=1800)
     except llm.LLMError:
         answer = _direct(message, notes, web)                # every AI service is busy: answer straight from the notes or the live sources
         if not answer:
             raise
     answer = re.sub("[\u3010\uff3b]([0-9]{1,2})[\u3011\uff3d]", lambda m: "[" + m.group(1) + "]", answer)   # some models cite as 【1】; normalise to [1]
+    if key and not answer.startswith("_The AI tutor is busy"):
+        if len(_CACHE) > 2000:
+            _CACHE.clear()
+        _CACHE[key] = (time.time(), answer)
     cited = [(i + 1, w) for i, w in enumerate(web) if f"[{i + 1}]" in answer]
     stored = answer + sources_md(cited)
     now = int(time.time())

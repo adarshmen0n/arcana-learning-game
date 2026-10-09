@@ -1,7 +1,9 @@
 """The Arcana pipeline: file -> text -> concept plan -> (web research) -> chapters -> verified questions -> GameScript JSON.
 Chapter 1 is generated first so the game can start while later chapters are still being built."""
 import concurrent.futures as cf
+import hashlib
 import json
+import os
 import pathlib
 import re
 import threading
@@ -28,6 +30,9 @@ ARCADES = [("maze", "Maze Run"), ("snake", "Snake Trail"), ("hill", "Hill Climb 
 ROLES = ["intro", "core", "deep", "recap", "more"]
 THEMES = {"science": "crystal_cave", "nature": "ancient_forest", "conflict": "ember_citadel", "history": "desert_canyon", "abstract": "aurora_peaks"}
 JOBS: dict = {}
+MAX_PARALLEL = int(os.environ.get("ARCANA_PARALLEL_JOBS", "3"))      # builds running at once; the rest wait in line (protects the AI quotas)
+_slots = threading.BoundedSemaphore(MAX_PARALLEL)
+AI_PATIENCE = int(os.environ.get("ARCANA_AI_PATIENCE", "600"))       # seconds a build waits for a busy AI before building a quick version
 
 
 class PipelineError(Exception):
@@ -141,8 +146,28 @@ def start(filename, data=None, text=None, opts=None) -> Job:
     return job
 
 
+def _queue_position(job):
+    waiting = sorted((j for j in JOBS.values() if j.status == "queued"), key=lambda j: j.created)
+    return next((i for i, j in enumerate(waiting) if j is job), 0)
+
+
 def _run(job: Job):
+    while not _slots.acquire(timeout=3):                  # wait for a free build slot and tell the student where they are in line
+        n = _queue_position(job)
+        job.message = f"In the queue: {n} game{'s' if n != 1 else ''} ahead of you" if n else "Starting soon"
+    try:
+        _build(job)
+    finally:
+        _slots.release()
+
+
+def _text_hash(text):
+    return hashlib.sha256(re.sub(r"\s+", " ", text).strip().lower().encode("utf-8")).hexdigest()
+
+
+def _build(job: Job):
     job.status = "running"
+    llm.patience(AI_PATIENCE)
     try:
         job.set("ingest", 3, "Reading your file")
         if job.text is not None:
@@ -161,7 +186,23 @@ def _run(job: Job):
         job.log(f"{words:,} words found")
         if words < 60:
             raise PipelineError("Not enough material: upload at least a few paragraphs.")
-        (_ai if job.mode == "ai" else _offline)(job, text)
+        h = _text_hash(text)
+        cached = db.cache_get(h) if not job.opts.get("fresh") else None
+        if cached and cached.get("chapters"):                # the same material was turned into a game before: reuse it, no AI needed
+            job.set("cache", 50, "This material was forged before: loading the finished game")
+            job.script = {**cached, "projectId": job.id}
+            job.total = len(cached["chapters"])
+            job.chapters = {i: ch for i, ch in enumerate(cached["chapters"])}
+        elif job.mode == "ai":
+            try:
+                _ai(job, text)
+            except llm.LLMError as e:                         # the free AI services stayed busy: give the student a playable game now
+                job.log("The AI services are busy (" + str(e)[:120] + "). Building a quick version so you can play now; use Rebuild later for full AI lessons.")
+                job.chapters, job.total, job.script, job.mode = {}, 0, None, "offline"
+                _offline(job, text)
+                job.script["quick"] = True
+        else:
+            _offline(job, text)
         if len(job.chapters) != job.total:
             raise PipelineError("Generation finished with missing chapters.")
         job.publish()
@@ -169,6 +210,8 @@ def _run(job: Job):
         if problems:
             raise PipelineError("Generated game failed validation: " + "; ".join(problems[:3]))
         db.save_script(job.id, job.script)
+        if job.mode == "ai" and not job.script.get("quick") and not cached:
+            db.cache_put(h, job.id)
         if job.opts.get("owner"):
             db.add_game(job.id, job.opts["owner"], job.script["title"])
             db.save_source(job.id, text)                 # kept so a personal review can be written from the same material later

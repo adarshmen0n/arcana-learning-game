@@ -272,7 +272,7 @@ def game_rebuild(r, gid):
     if not src:
         raise Err(400, "This game was made before ARCANA kept the original text. Upload the file again to rebuild it.")
     title = (db.q("SELECT title FROM games WHERE id=?", (gid,), one=True) or {"title": "notes"})["title"]
-    r.body = {"text": src, "filename": title[:100] + ".txt"}
+    r.body = {"text": src, "filename": title[:100] + ".txt", "fresh": True}     # a rebuild always writes a new version (skips the shared cache)
     return job_create(r)
 
 
@@ -486,7 +486,7 @@ def job_create(r):
     if not admin and config.MAX_GAMES_PER_DAY and db.games_today(u["id"]) + busy >= config.MAX_GAMES_PER_DAY:
         raise Err(429, f"Daily limit reached ({config.MAX_GAMES_PER_DAY} new games per day). Try again tomorrow.")
     filename = clean(r.body.get("filename") or "notes.txt", 120)
-    opts = {"offline": bool(r.body.get("offline")), "owner": u["id"]}
+    opts = {"offline": bool(r.body.get("offline")), "owner": u["id"], "fresh": bool(r.body.get("fresh"))}
     try:
         opts["profile"] = student.build(u)           # the generator personalises to this student
     except Exception:

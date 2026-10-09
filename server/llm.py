@@ -561,8 +561,17 @@ def _apply(p, e: Skip, log):
         log(f"{p.name}: {e}{wait}")
 
 
+_patience = threading.local()
+
+
+def patience(seconds):
+    """Game builds may wait longer than a chat answer for a rate-limited AI (set per thread)."""
+    _patience.s = seconds
+
+
 def _route(op, chars, *, need=None, log=None, wait_total=150):
     """Run op(provider) on the first provider that works; fail over on Skip."""
+    wait_total = max(wait_total, getattr(_patience, "s", 0) or 0)
     deadline, tried, notes = time.time() + wait_total, set(), []
     while True:
         cands = [p for p in PROVIDERS if p.dead is None and p.fits(chars) and (need is None or getattr(p, need, False))]

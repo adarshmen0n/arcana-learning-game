@@ -470,7 +470,7 @@ function wireUpload() {
         }
         if ($("#pf")) { $("#pf").style.width = j.pct + "%"; $("#pm").textContent = j.error ? j.error : j.message + (j.total ? ` (${j.ready}/${j.total} chapters)` : ""); }
         if (j.ready >= 1 && j.script && j.status !== "done" && $("#pb")) $("#pb").innerHTML = `<a class="gbtn hero" href="/play.html?job=${encodeURIComponent(job.id)}">Play chapter 1 now</a>`;
-        if (j.status === "done") { toast("Game ready: " + (j.title || "")); await refresh(); return; }
+        if (j.status === "done") { toast(j.mode === "offline" ? "Game ready in quick mode (the AI was busy). Press Rebuild in Quests later for full AI lessons." : "Game ready: " + (j.title || "")); await refresh(); return; }
         if (j.status === "error") { if ($("#msg")) $("#msg").innerHTML = `<div class="err">${esc(j.error)}</div>`; if ($("#go")) $("#go").disabled = false; toast(j.error); return; }
         setTimeout(tick, 1500);
       };

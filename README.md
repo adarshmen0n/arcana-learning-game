@@ -33,7 +33,15 @@ If a service hits its limit or errors, the next one takes over automatically. Ke
 3. In the service's **Environment** tab paste your keys (`GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, optional `ANTHROPIC_API_KEY`).
 4. Open the `onrender.com` address and create a student account.
 
-Every upload needs a login. There is no daily game limit by default (set `ARCANA_MAX_GAMES_PER_DAY` to add one). A student can build two games at once; when the free AI services are busy, the router waits and switches to the next one. `ARCANA_HOSTED=1` makes the session cookie Secure (HTTPS only).
+Every upload needs a login. There is no daily game limit by default (set `ARCANA_MAX_GAMES_PER_DAY` to add one). A student can build two games at once; when the free AI services are busy, the router waits and switches to the next one.
+
+**Built for many players at once:**
+- Game builds wait in a line (`ARCANA_PARALLEL_JOBS`, default 3 at a time) and students see their place in it.
+- A file that was already turned into a game is reused instantly for the next student (no AI calls). Rebuild always writes a new version.
+- If every AI service stays busy for `ARCANA_AI_PATIENCE` seconds (default 600), a quick version is built so the student can play now; Rebuild later adds full AI lessons.
+- Common first questions to Arc Search are answered from a shared 6-hour cache; when the AI is busy, Arc answers from the notes and live sources.
+- Game files are gzip-compressed with ETags; the Postgres connection pool (`ARCANA_DB_POOL`, default 8) lets requests run side by side.
+- Free AI quotas are per key, so add several keys separated by commas (`GEMINI_API_KEY=key1,key2,key3`); the router rotates through them. `ARCANA_HOSTED=1` makes the session cookie Secure (HTTPS only).
 
 **Keep data on the free plan:** Render's free web service has a temporary disk and sleeps after 15 minutes without visits. Create a free Postgres database at https://neon.tech (or supabase.com), copy its connection string and set it as `DATABASE_URL` (in `.env`, then `python server/deploy_render.py`, or in the Render Environment tab). Accounts, games, answers, mastery and roadmaps are then stored there and survive restarts. Without `DATABASE_URL` the app uses a local SQLite file, which Render's free plan erases on every restart.
 
@@ -57,6 +65,7 @@ python server/test_platform.py   # accounts, privacy between students, adaptatio
 python server/test_mastery.py    # mastery and difficulty engine
 python server/test_generation.py # generation pipeline, full coverage of the upload
 python server/test_rewards.py    # streaks, daily challenges, season pass, cosmetics
+python server/test_scale.py      # build queue, shared game cache, quick-mode fallback, compression, many players
 python server/pg_test.py         # platform tests on a throwaway Postgres (pip install pgserver)
 ```
 

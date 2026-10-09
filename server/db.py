@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import os
+import queue
 import re
 import secrets
 import sqlite3
@@ -28,6 +29,9 @@ LOST = (psycopg.OperationalError, psycopg.InterfaceError) if psycopg else ()
 
 _lock = threading.RLock()
 _conn = None
+# Postgres: a small pool so many players' requests run side by side (SQLite keeps one connection behind the lock)
+POOL = int(os.environ.get("ARCANA_DB_POOL", "8"))
+_pool, _made, _tl, _schema_done = queue.LifoQueue(), 0, threading.local(), False
 SESSION_DAYS = 30
 
 SQLITE_SCHEMA = """
@@ -36,6 +40,7 @@ CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, user_id INTEGER NOT 
 CREATE TABLE IF NOT EXISTS games(id TEXT PRIMARY KEY, owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, created INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS scripts(id TEXT PRIMARY KEY, body TEXT NOT NULL, created INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS sources(game_id TEXT PRIMARY KEY, body TEXT NOT NULL, created INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS script_cache(hash TEXT PRIMARY KEY, game_id TEXT NOT NULL, created INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS arc_messages(id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL DEFAULT '', role TEXT NOT NULL, content TEXT NOT NULL, created INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS arc_user ON arc_messages(user_id, game_id, id);
 CREATE TABLE IF NOT EXISTS reports(id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, qid TEXT NOT NULL, reason TEXT, created INTEGER NOT NULL);
@@ -53,6 +58,7 @@ PG_SCHEMA = [
     "CREATE TABLE IF NOT EXISTS games(id TEXT PRIMARY KEY, owner_id BIGINT REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, created BIGINT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS scripts(id TEXT PRIMARY KEY, body TEXT NOT NULL, created BIGINT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS sources(game_id TEXT PRIMARY KEY, body TEXT NOT NULL, created BIGINT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS script_cache(hash TEXT PRIMARY KEY, game_id TEXT NOT NULL, created BIGINT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS arc_messages(id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL DEFAULT '', role TEXT NOT NULL, content TEXT NOT NULL, created BIGINT NOT NULL)",
     "CREATE INDEX IF NOT EXISTS arc_user ON arc_messages(user_id, game_id, id)",
     "CREATE TABLE IF NOT EXISTS reports(id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, game_id TEXT NOT NULL, qid TEXT NOT NULL, reason TEXT, created BIGINT NOT NULL)",
@@ -70,8 +76,12 @@ def _sql(sql):
 
 
 def _connect():
+    global _schema_done
     if PG:
         c = psycopg.connect(DATABASE_URL, autocommit=True, row_factory=dict_row, connect_timeout=15)
+        if _schema_done:
+            return c
+        _schema_done = True
         for st in PG_SCHEMA:
             c.execute(st)
         c.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_name_ci ON users(lower(username))")
@@ -93,8 +103,54 @@ def _connect():
     return c
 
 
+def _take():
+    global _made
+    try:
+        return _pool.get_nowait()
+    except queue.Empty:
+        pass
+    with _lock:
+        if _made < POOL:
+            _made += 1
+            try:
+                return _connect()
+            except Exception:
+                _made -= 1
+                raise
+    return _pool.get(timeout=30)
+
+
+class _hold:
+    """Borrow this thread's database connection for a block (re-entrant). Postgres: from the pool; SQLite: the shared one under the lock."""
+    def __enter__(self):
+        if not PG:
+            _lock.acquire()
+            return conn()
+        if getattr(_tl, "c", None) is not None:
+            _tl.depth += 1
+            return _tl.c
+        _tl.c, _tl.depth = _take(), 1
+        return _tl.c
+
+    def __exit__(self, *exc):
+        if not PG:
+            _lock.release()
+            return False
+        _tl.depth -= 1
+        if _tl.depth == 0:
+            c, _tl.c = _tl.c, None
+            if c is not None and not c.closed:
+                _pool.put(c)
+        return False
+
+
 def conn():
     global _conn
+    if PG:
+        if getattr(_tl, "c", None) is not None:
+            return _tl.c
+        with _hold() as c:
+            return c
     with _lock:
         if _conn is None:
             _conn = _connect()
@@ -103,6 +159,13 @@ def conn():
 
 def _reset():
     global _conn
+    if PG and getattr(_tl, "c", None) is not None:          # this thread's pooled connection was dropped: replace it
+        try:
+            _tl.c.close()
+        except Exception:
+            pass
+        _tl.c = _connect()
+        return
     with _lock:
         try:
             if _conn is not None:
@@ -124,14 +187,14 @@ def _exec(sql, args=()):
 
 
 def q(sql, args=(), one=False):
-    with _lock:
+    with _hold():
         rows = _exec(sql, args).fetchall()
     return (rows[0] if rows else None) if one else rows
 
 
 def run(sql, args=()):
     """Run a write. For an INSERT into users or tickets the new id is returned (both databases)."""
-    with _lock:
+    with _hold():
         if PG and sql.lstrip().upper().startswith(("INSERT INTO USERS", "INSERT INTO TICKETS")):
             return _exec(sql + " RETURNING id", args).fetchone()["id"]
         return _exec(sql, args).lastrowid if not PG else (_exec(sql, args) and None)
@@ -140,6 +203,16 @@ def run(sql, args=()):
 # ---------------------------------------------------------------- generated game scripts (kept in the database so they survive restarts)
 def save_script(sid, obj):
     run("INSERT INTO scripts(id,body,created) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body", (sid, json.dumps(obj, ensure_ascii=False), int(time.time())))
+
+
+def cache_put(h, game_id):
+    run("INSERT INTO script_cache(hash,game_id,created) VALUES(?,?,?) ON CONFLICT(hash) DO UPDATE SET game_id=excluded.game_id, created=excluded.created", (h, game_id, int(time.time())))
+
+
+def cache_get(h):
+    """A finished game built from exactly the same material, if one exists."""
+    row = q("SELECT game_id FROM script_cache WHERE hash=?", (h,), one=True)
+    return get_script(row["game_id"]) if row else None
 
 
 def get_script(sid):
@@ -342,8 +415,7 @@ def apply_events(user_id, game_id, rows):
 
 def _apply_events(user_id, game_id, rows):
     now = int(time.time())
-    with _lock:
-        conn()
+    with _hold():
         _exec("BEGIN")
         try:
             for r in rows:

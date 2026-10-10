@@ -96,7 +96,7 @@ footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--line);
   <p class="lead">A student uploads their notes. ARCANA reads every word, turns the material into a 2D adventure game with lessons, mini-games, fights and boss quizzes, and then adapts to how that student learns. This page explains what was built, which tools were used, how they fit together and why each choice was made.</p>
   <p>Live app: <a href="https://arcana-ai-16xh.onrender.com" target="_blank" rel="noopener">arcana-ai-16xh.onrender.com</a> · Code: <a href="https://github.com/adarshmen0n/arcana-learning-game" target="_blank" rel="noopener">github.com/adarshmen0n/arcana-learning-game</a></p>
   <div class="facts">
-    <div><b>~10,000</b><span>lines of code</span></div>
+    <div><b>~10,400</b><span>lines of code</span></div>
     <div><b>13</b><span>browser script files</span></div>
     <div><b>26</b><span>server modules</span></div>
     <div><b>7</b><span>automated test suites</span></div>
@@ -168,7 +168,7 @@ flowchart LR
 <tr><td>BM25 search (written in the project)</td><td>Finds the most relevant passages of the student's text</td><td>Used to check every question against the original text, and to give Arc Search the student's own notes. Written in-house so it needs no extra service.</td></tr>
 <tr><td>Wikipedia API</td><td>Free live facts</td><td>Fills gaps in thin material and keeps Arc Search up to date, at no cost.</td></tr>
 <tr><td>Render</td><td>Hosts the live app</td><td>Free web hosting that redeploys automatically whenever new code is pushed to GitHub.</td></tr>
-<tr><td>Git and GitHub</td><td>Version history and backup of all code</td><td>Every change is a saved commit (32 so far), so any version can be restored, and Render deploys from it.</td></tr>
+<tr><td>Git and GitHub</td><td>Version history and backup of all code</td><td>Every change is a saved commit (39 so far), so any version can be restored, and Render deploys from it.</td></tr>
 </tbody></table></div>
 
 <h2 id="make"><span class="n">05</span>How a game is made from an upload</h2>
@@ -186,6 +186,7 @@ flowchart LR
   <li><div><b>Assemble the chapter.</b> Lessons, tablets, 3 mini-games, two fights, a match, a mission, a trial and a mini-boss are placed in order, with a world, weather and boss chosen so each chapter looks different.</div></li>
   <li><div><b>Validate and save.</b> The finished game is checked for structure, saved to the database, and only then unlocked for the student.</div></li>
 </ol>
+<div class="note"><b>Builds survive restarts</b>The server saves a checkpoint after reading the file, after planning and after every finished chapter. If the server restarts in the middle (for example during an update), it picks the build up from its last checkpoint instead of starting over, and the student's progress screen keeps waiting instead of showing an error.</div>
 <div class="note warn"><b>If the AI is busy</b>Free AI services sometimes run out of quota. The builder spreads calls across all keys, waits up to 10 minutes for a busy service, and if all are still busy it builds a quick version (fill-in-the-blank questions made without AI) so the student can always play. Pressing Rebuild later adds full AI lessons.</div>
 <h3>How the AI router works</h3>
 <p><code>server/llm.py</code> treats every AI service as interchangeable. Each request goes to the least busy key of the preferred service. If it fails (limit reached, server overloaded, model retired), the router marks that key as "cooling down" and tries the next one automatically. This is called <b>failover</b>, and it is the reason the app works on free AI plans.</p>
@@ -210,6 +211,10 @@ flowchart LR
 </ul>
 <h3>Fights</h3>
 <p>Fights are real-time with buttons (keyboard on PC, on-screen buttons on phones): a 4-hit combo, kicks, a charged guard breaker, launcher and air combos, throws, sweeps, dodges, perfect parries and four powers. Every enemy carries a "knowledge shard": a fact from the student's own material that is shown when it is defeated. Ambushes come in 2 waves; elite fights in 3 waves plus a gold champion. Difficulty follows the student's mastery, so fights stay hard but winnable.</p>
+<h3>The final boss: Dr Doom</h3>
+<p>After the last chapter the student faces the final villain, Dr Doom: a scowling silver mask inside a green hood, a green tunic and cape, gold shoulder medallions joined by a gold chain, a dark belt with gold trim, and silver plate armour, all drawn in code. The fight is a final exam of exactly 20 questions taken from the whole game (every different question first, repeats only if the game has fewer than 20). The student always answers all 20, and only then is the verdict shown: 15 or more correct defeats Dr Doom; otherwise he survives and the student can fight again.</p>
+<h3>Pause, save and exit</h3>
+<p>A MENU button in the top bar (or Esc / P) pauses everything and offers Resume, Save and exit to the lobby, Sound on or off, and Save and close the game. The exact step inside the chapter is remembered, so the next visit continues there. Sound stops automatically when the app is minimised, put in the background or closed.</p>
 <h3>Every chapter looks different</h3>
 <p>There are 6 hand-coded worlds (crystal cave, ancient forest, ember citadel, desert canyon, aurora peaks, neon grid). No world appears twice in a row, and when worlds repeat they come at another time of day or weather (dusk with embers, night with rain and lightning, snow and others). Each chapter also gets its own enemy line-up, armour colours, champion and boss.</p>
 <h3>Characters</h3>
@@ -264,6 +269,10 @@ flowchart LR
   <li>Game building waits in a line, reuses identical games, and spreads AI calls across 4 Gemini keys plus Groq and OpenRouter.</li>
   <li>A load test of 40 simultaneous users sending 400 requests passed with no errors.</li>
 </ul>
+<h3>Updates always arrive</h3>
+<p>Every page stamps a fingerprint of the current files onto its script and style links (for example <code>game.js?v=7372d570b1</code>). After any update the links change, so no phone or PC can keep running an old copy, while unchanged files can still be cached for fast loading.</p>
+<h3>Fits every screen</h3>
+<p>The game keeps a 16:9 shape so nothing is ever cut off. The top bar shares its space: in long chapters the step icons shrink so the score and MENU always stay visible, and mini-game questions sit on their own panel above the game board, shrinking to fit when they are long.</p>
 
 <h2 id="timeline"><span class="n">11</span>How it was built, step by step</h2>
 <div class="timeline">
@@ -277,6 +286,7 @@ flowchart LR
   <div><b>8. Real-world fixes</b>Fixed an upload crash, removed the daily limit, let Gemini read scanned PDFs, handled phone cloud files, and fixed phone orientation.</div>
   <div><b>9. Speed and scale</b>Phone performance mode, build queue, shared game cache, quick-mode backup, compression, database pool, and spreading AI calls over several keys (a build went from about 4½ to about 2¾ minutes for the same file).</div>
   <div><b>10. Final structure</b>Real chapters (at least 2), three mini-games in every chapter, a different world and fight per chapter, and the game unlocks only when all chapters are ready.</div>
+  <div><b>11. Final polish</b>Builds that survive server restarts, a pause menu with save and exit, sound that stops in the background, screen-fit fixes for wide windows, guaranteed fresh files after every update, "User name" on the login screen, and the Dr Doom final boss with a 20-question exam where 15 correct answers win.</div>
 </div>
 
 <h2 id="problems"><span class="n">12</span>Problems we hit, and how they were solved</h2>
@@ -291,17 +301,21 @@ flowchart LR
 <tr><td>Game lagged on phones</td><td>Full-screen glow effects, too many layers, 120 Hz screens, constant screen updates</td><td>Lighter phone mode, 60 fps cap, drawing only what is visible</td></tr>
 <tr><td>Mini-games missing</td><td>The question checker sometimes removed all of a mini-game's questions</td><td>Mini-games borrow other questions from the chapter, so they are never dropped</td></tr>
 <tr><td>Only one chapter for small files</td><td>Chapters were cut every 450 words</td><td>Chapters of about 220 words, at least 2 per game</td></tr>
+<tr><td>"The server restarted" during a build</td><td>Every update restarts the server, and builds lived only in memory</td><td>Checkpoints in the database; a restarted server resumes the build</td></tr>
+<tr><td>Fixes not showing on a device</td><td>The app kept using copies of files it had saved earlier</td><td>Every page links files with a fingerprint that changes on each update</td></tr>
+<tr><td>Score and buttons cut off; questions hidden</td><td>Long chapters made the step bar too wide; game boards covered long questions</td><td>The step bar shrinks to fit; questions sit on their own panel above the game</td></tr>
+<tr><td>Final boss ended after two mistakes</td><td>Games with few questions made a shorter exam with a very strict pass mark</td><td>Always 20 questions, all answered, then the verdict (15 to win)</td></tr>
 <tr><td>Slow game building</td><td>Every AI call went to the same key and steps ran one by one</td><td>Calls spread across keys, independent steps run in parallel</td></tr>
 </tbody></table></div>
 
 <h2 id="tests"><span class="n">13</span>Testing and deployment</h2>
-<p>There are 7 automated test suites (about 160 checks) that run in seconds without using real AI credits. They use stand-in AI services to test:</p>
+<p>There are 7 automated test suites (about 170 checks) that run in seconds without using real AI credits. They use stand-in AI services to test:</p>
 <ul>
   <li><b>File reading</b> (<code>test_ingest.py</code>): PDFs, Word, PowerPoint and text.</li>
   <li><b>AI failover</b> (<code>test_ai_path.py</code>): rate limits, bad answers, rejected keys and quick-mode backup.</li>
   <li><b>Game building</b> (<code>test_generation.py</code>): full coverage and chapter splitting.</li>
   <li><b>The platform</b> (<code>test_platform.py</code>): accounts, privacy between students, mastery, roadmap and limits. It also runs against a real PostgreSQL database.</li>
-  <li><b>Rewards</b> (<code>test_rewards.py</code>), <b>mastery maths</b> (<code>test_mastery.py</code>) and <b>scale</b> (<code>test_scale.py</code>): the build queue, game cache, compression and 40 simultaneous users.</li>
+  <li><b>Rewards</b> (<code>test_rewards.py</code>), <b>mastery maths</b> (<code>test_mastery.py</code>) and <b>scale</b> (<code>test_scale.py</code>): the build queue, game cache, resuming a build after a simulated restart, compression and 40 simultaneous users.</li>
 </ul>
 <p>Every change was also checked in a real browser at PC, Windows-scaled and phone sizes before release.</p>
 <p><b>Deployment flow:</b> code is committed with Git, pushed to GitHub, and Render rebuilds and restarts the live app automatically within about a minute. A deploy script also copies the private keys from <code>.env</code> into Render's settings without printing them.</p>
@@ -351,8 +365,10 @@ flowchart LR
   <dt>Deployment</dt><dd>Putting a new version of the app online.</dd>
   <dt>Git / commit</dt><dd>Git records every change to the code; a commit is one saved change with a message.</dd>
   <dt>Cache</dt><dd>Keeping a copy of something so it does not need to be fetched or made again.</dd>
+  <dt>Checkpoint</dt><dd>A saved point in a long task, so it can continue from there after an interruption.</dd>
+  <dt>Cache busting</dt><dd>Changing a file's link (here with a fingerprint) so browsers fetch the new version instead of an old saved copy.</dd>
 </dl>
 
-<footer>ARCANA AI, created by Adarsh Menon. Built with Claude Code (Anthropic). Facts on this page reflect the project as of 9 October 2026.</footer>
+<footer>ARCANA AI, created by Adarsh Menon. Built with Claude Code (Anthropic). Facts on this page reflect the project as of 10 October 2026.</footer>
 </main>
 </div>

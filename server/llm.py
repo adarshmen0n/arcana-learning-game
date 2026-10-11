@@ -573,7 +573,7 @@ def patience(seconds):
 
 
 _rr, _busy_lock = [0], threading.Lock()
-_gate = threading.BoundedSemaphore(int(os.environ.get("ARCANA_AI_PARALLEL", "4")))
+_gate = threading.BoundedSemaphore(int(os.environ.get("ARCANA_AI_PARALLEL", "6")))   # requests in flight server-wide (about one per working key)
 
 
 def _spread(cands):

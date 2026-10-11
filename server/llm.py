@@ -363,6 +363,8 @@ class CompatProvider(Provider):
             low = text.lower()
             if e.code in (401, 403):
                 raise Skip("key rejected", fatal=True)
+            if "insufficient_quota" in low or "credit_balance" in low or "no credits" in low:     # a paid key with no money on it: skip it for an hour
+                raise Skip("no credits on this key", cooldown=3600)
             if e.code == 413 or "too large" in low or "reduce your" in low or "context length" in low or "maximum context" in low:
                 raise Skip("request too large for this plan", cooldown=0)
             if e.code == 429 and "upstream" in low and self.model and not os.environ.get(self.model_env or "_"):   # one free model is busy: use another one

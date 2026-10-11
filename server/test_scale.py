@@ -119,6 +119,7 @@ crash = {"on": True}
 
 def fake_gen(job, plan, i, doc, index=None, part=None):
     if crash["on"] and i > 0:
+        time.sleep(0.5)                                  # chapters run side by side; chapter 1 finishes first, then the restart hits
         raise SystemExit("server stopped")              # the restart kills the build after chapter 1
     built.append(i)
     ch = plan["chapters"][i]

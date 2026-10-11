@@ -542,7 +542,7 @@ def concurrency() -> int:
     if any(isinstance(p, AnthropicProvider) and p.dead is None for p in PROVIDERS):
         return 3
     alive = [p for p in PROVIDERS if p.dead is None]
-    return max(1, min(3, len(alive) - 1))                # several free keys: build a few chapters side by side
+    return max(1, min(3, len(alive) - 1))                # several free keys: a few chapters side by side (more only trips the per-minute limits)
 
 
 def status():
@@ -573,6 +573,7 @@ def patience(seconds):
 
 
 _rr, _busy_lock = [0], threading.Lock()
+_gate = threading.BoundedSemaphore(int(os.environ.get("ARCANA_AI_PARALLEL", "4")))
 
 
 def _spread(cands):
@@ -612,6 +613,7 @@ def _route(op, chars, *, need=None, log=None, wait_total=150):
                 continue
             with _busy_lock:
                 p.busy = getattr(p, "busy", 0) + 1
+            _gate.acquire()
             try:
                 out = op(p)
                 if tried and log:
@@ -622,6 +624,7 @@ def _route(op, chars, *, need=None, log=None, wait_total=150):
                 notes.append(f"{p.name}: {e}")
                 tried.add(p.name)
             finally:
+                _gate.release()
                 with _busy_lock:
                     p.busy -= 1
         waiting = [p for p in cands if p.dead is None and not p.ready()]

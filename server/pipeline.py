@@ -84,6 +84,9 @@ TABLET = _obj({"title": S, "concept_ids": ARR(S), "points": ARR(S), "example": S
 TABLET_SCHEMA = _obj({"tablets": ARR(TABLET), "mission": MISSION})
 QUESTION_SET_A = _obj({"obstacles": ARR(_obj({"question": QUESTION, "hint": S})), "match": ARR(QUESTION), "arcade": ARR(QUESTION)})
 QUESTION_SET_B = _obj({"test": ARR(QUESTION), "spare": ARR(QUESTION)})
+TEACH_SCHEMA = _obj({"npcs": ARR(MENTOR), "tablets": ARR(TABLET), "mission": MISSION}, required=["npcs"])            # lessons + tablets + mission in ONE call
+QUESTIONS_ALL = _obj({"obstacles": ARR(_obj({"question": QUESTION, "hint": S})), "match": ARR(QUESTION), "arcade": ARR(QUESTION),
+                      "test": ARR(QUESTION), "spare": ARR(QUESTION)}, required=["obstacles", "match", "arcade"])   # every quiz question in ONE call (a missing half is asked for separately)
 VERIFY_SCHEMA = _obj({"results": ARR(_obj({"id": S, "valid": B, "correct_index": I, "issue": S}))})
 
 SYS = ("You are the content designer for ARCANA AI, a game that teaches study material through play. "
@@ -146,7 +149,7 @@ class Job:
     def public(self):
         with self.lock:
             return {"id": self.id, "status": self.status, "stage": self.stage, "pct": self.pct, "message": self.message, "mode": self.mode,
-                    "error": self.error, "total": self.total, "ready": self.ready(), "logs": self.logs[-40:], "usage": dict(self.usage),
+                    "error": self.error, "total": self.total, "ready": self.ready(), "built": len(self.chapters), "logs": self.logs[-40:], "usage": dict(self.usage),
                     "title": (self.script or {}).get("title"),
                     "script": self.script if self.script is not None and self.status == "done" else None}
 
@@ -388,23 +391,19 @@ def _ai(job: Job, text: str):
                 if wait:
                     time.sleep(wait)
 
-    job.set("chapter1", 30, "Forging chapter 1")
-    job.chapters[0] = done[0] if 0 in done else build(0)
-    job.publish()
-    job.checkpoint()
-    job.set("chapters", 55, f"Chapter 1 of {job.total} built; building the rest")
-    if job.total > 1:
-        with cf.ThreadPoolExecutor(max_workers=llm.concurrency()) as ex:
-            for i in range(1, job.total):
-                if i in done:
-                    job.chapters[i] = done[i]
-            futs = {ex.submit(build, i): i for i in range(1, job.total) if i not in done}
-            for f in cf.as_completed(futs):
-                i = futs[f]
-                job.chapters[i] = f.result()
-                job.publish()
-                job.checkpoint()
-                job.set("chapters", 55 + int(40 * job.ready() / job.total), f"Chapter {i + 1} ready")
+    # the game unlocks only when every chapter is ready, so all chapters are written at the same time (spread over every AI key)
+    job.set("chapters", 30, f"Writing all {job.total} chapters at once")
+    for i in range(job.total):
+        if i in done:
+            job.chapters[i] = done[i]
+    with cf.ThreadPoolExecutor(max_workers=max(1, min(job.total, llm.concurrency()))) as ex:
+        futs = {ex.submit(build, i): i for i in range(job.total) if i not in done}
+        for f in cf.as_completed(futs):
+            i = futs[f]
+            job.chapters[i] = f.result()
+            job.publish()
+            job.checkpoint()
+            job.set("chapters", 30 + int(65 * len(job.chapters) / job.total), f"Chapter {i + 1} ready ({len(job.chapters)} of {job.total})")
     job.set("finish", 96, "Assembling your game")
 
 
@@ -529,12 +528,13 @@ def gen_chapter(job, plan, i, doc, index=None, part=None):
              "evidence: a short VERBATIM quote (max 160 characters) copied from the study material that proves the correct answer; never invent it. "
              "skill: recall, understand, apply or analyze, mixed across the set, with the harder skills toward the end. Never repeat a question.")
     job.log(f"Writing chapter {i + 1}: lessons and knowledge tablets")
-    gen, tabs = _both(lambda: llm.call_json(SYS, lessons, LESSON_SCHEMA, doc=doc, max_tokens=12000, tally=job.usage, log=job.log),
-                      lambda: llm.call_json(SYS, tablets, TABLET_SCHEMA, doc=doc, max_tokens=9000, tally=job.usage, log=job.log))   # independent: written side by side
-    gen.update(tabs)
+    # one AI call writes the lessons, tablets and mission together (free AI keys allow only a few calls a minute, so fewer calls = a faster game)
+    gen = llm.call_json(SYS, lessons + "\n\nIN THE SAME ANSWER, ALSO WRITE:\n" + tablets[len(head):], TEACH_SCHEMA, doc=doc, max_tokens=16000, tally=job.usage, log=job.log)
+    if not gen.get("tablets") or not gen.get("mission"):           # a weaker model skipped the second part: ask for it alone
+        gen.update(llm.call_json(SYS, tablets, TABLET_SCHEMA, doc=doc, max_tokens=9000, tally=job.usage, log=job.log))
     if part:                                                      # coverage pass: anything in this part that was not taught gets an extra lesson
         pct, missed = coverage(part, gen)
-        if missed and pct < 0.92:
+        if missed and pct < 0.85:
             extra = ("These parts of the study material were NOT taught yet. Write ONE more mentor (npc_name: " + (ch["npc_names"] + MENTOR_NAMES)[4 % len(ch["npc_names"] + MENTOR_NAMES)] +
                      ", role 'more') who teaches all of them clearly and simply, 4 to 8 lines, max 300 characters each, with an analogy where it helps. key_idea: the most important point. concept_ids from the list above.\n\nNot yet taught:\n- " + "\n- ".join(m[:400] for m in missed[:10]))
             try:
@@ -555,10 +555,15 @@ def gen_chapter(job, plan, i, doc, index=None, part=None):
     qa = head + focus + "Write quiz questions for this chapter.\n- obstacles: 2 questions, each with a hint that nudges without revealing the answer.\n- match: 3 questions. arcade: 6 questions (they are played in three mini-games).\n\n" + rules
     qb = head + focus + "Write more quiz questions for this chapter (test understanding and application of what was taught).\n- test: 4 questions. spare: 3 extra questions.\n\n" + rules
     job.log(f"Writing chapter {i + 1}: questions")
-    set_a, set_b = _both(lambda: llm.call_json(SYS, qa, QUESTION_SET_A, doc=doc, max_tokens=12000, tally=job.usage, log=job.log),
-                         lambda: llm.call_json(SYS, qb, QUESTION_SET_B, doc=doc, max_tokens=12000, tally=job.usage, log=job.log))
-    gen.update(set_a)
-    gen.update(set_b)
+    qall = (head + focus + "Write all the quiz questions for this chapter.\n- obstacles: 2 questions, each with a hint that nudges without revealing the answer.\n"
+            "- match: 3 questions. arcade: 6 questions (they are played in three mini-games).\n- test: 4 questions that test understanding and application. spare: 3 extra questions.\n\n" + rules)
+    gen.update(llm.call_json(SYS, qall, QUESTIONS_ALL, doc=doc, max_tokens=14000, tally=job.usage, log=job.log))   # one call for every question
+    for k in ("obstacles", "match", "arcade", "test", "spare"):
+        gen.setdefault(k, [])
+    if not gen["test"] and not gen["spare"]:                       # a model answered only half: ask for the rest on its own
+        gen.update(llm.call_json(SYS, qb, QUESTION_SET_B, doc=doc, max_tokens=12000, tally=job.usage, log=job.log))
+    if not gen["obstacles"] and not gen["match"] and not gen["arcade"]:
+        gen.update(llm.call_json(SYS, qa, QUESTION_SET_A, doc=doc, max_tokens=12000, tally=job.usage, log=job.log))
     gen = verify(job, gen, doc, i)
     gen = dedupe(job, gen, i)
     if index is not None:

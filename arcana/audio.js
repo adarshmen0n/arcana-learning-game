@@ -1,6 +1,8 @@
 // Synthesised arcade SFX + a soft generative music bed (no audio files). Starts on first user gesture.
 const Sound = (() => {
   let ctx = null, master = null, musicBus = null, muted = false, musicTimer = null, mood = "forest", held = false;
+  const MUSIC_LEVELS = { high: 1.0, medium: 0.6, low: 0.3, off: 0 }, ORDER = ["high", "medium", "low", "off"];
+  let musicLevel = (() => { try { return MUSIC_LEVELS[localStorage.getItem("arcana_music_level")] != null ? localStorage.getItem("arcana_music_level") : "high"; } catch (e) { return "high"; } })();
   // the app in the background, minimised or closed: no sound keeps playing
   document.addEventListener("visibilitychange", () => { if (!ctx) return; if (document.hidden) ctx.suspend(); else if (!held) ctx.resume(); });
   addEventListener("pagehide", () => { try { if (ctx) ctx.close(); } catch (e) {} ctx = null; });
@@ -9,8 +11,10 @@ const Sound = (() => {
   function init() {
     if (ctx) { if (ctx.state === "suspended" && !held && !document.hidden) ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-    ctx = new AC(); master = ctx.createGain(); master.gain.value = muted ? 0 : 0.8; master.connect(ctx.destination);
-    musicBus = ctx.createGain(); musicBus.gain.value = 0.5; musicBus.connect(master); startMusic();
+    ctx = new AC(); master = ctx.createGain(); master.gain.value = muted ? 0 : 0.9;
+    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -18; comp.ratio.value = 4; comp.attack.value = 0.005; comp.release.value = 0.25;   // louder overall, no distortion on loud moments
+    master.connect(comp); comp.connect(ctx.destination);
+    musicBus = ctx.createGain(); musicBus.gain.value = MUSIC_LEVELS[musicLevel]; musicBus.connect(master); startMusic();
   }
   const ok = () => ctx && !muted;
   function tone(f, dur = 0.12, { type = "square", vol = 0.12, slide = 0, delay = 0, bus = master } = {}) {
@@ -28,13 +32,20 @@ const Sound = (() => {
   function startMusic() {
     const play = () => {
       if (!ctx) return; const chords = MOODS[mood] || MOODS.forest; const ch = chords[Math.floor(performance.now() / 6000) % chords.length], t = ctx.currentTime;
-      ch.forEach((f, i) => { for (const det of [-6, 6]) { const o = ctx.createOscillator(), g = ctx.createGain(), lp = ctx.createBiquadFilter(); o.type = "sawtooth"; o.frequency.value = f / (i ? 1 : 2); o.detune.value = det; lp.type = "lowpass"; lp.frequency.value = 520; g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.035, t + 2.2); g.gain.linearRampToValueAtTime(0.0001, t + 6.2); o.connect(lp); lp.connect(g); g.connect(musicBus); o.start(t); o.stop(t + 6.4); } });
-      for (let i = 0; i < 3; i++) tone(ch[Math.floor(Math.random() * 3)] * 4, 1.2, { type: "sine", vol: 0.025, delay: 1 + i * 1.7, bus: musicBus });
+      ch.forEach((f, i) => { for (const det of [-6, 6]) { const o = ctx.createOscillator(), g = ctx.createGain(), lp = ctx.createBiquadFilter(); o.type = "sawtooth"; o.frequency.value = f / (i ? 1 : 2); o.detune.value = det; lp.type = "lowpass"; lp.frequency.value = 520; g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.075, t + 2.2); g.gain.linearRampToValueAtTime(0.0001, t + 6.2); o.connect(lp); lp.connect(g); g.connect(musicBus); o.start(t); o.stop(t + 6.4); } });
+      for (let i = 0; i < 3; i++) tone(ch[Math.floor(Math.random() * 3)] * 4, 1.2, { type: "sine", vol: 0.07, delay: 1 + i * 1.7, bus: musicBus });
+      tone(ch[0] / 2, 5.6, { type: "triangle", vol: 0.16, bus: musicBus });                                   // soft bass on every chord
+      for (let b = 0; b < 4; b++) {                                                                               // a light beat so the music has drive
+        const k = ctx.createOscillator(), kg = ctx.createGain(), kt = t + b * 1.5; k.frequency.setValueAtTime(120, kt); k.frequency.exponentialRampToValueAtTime(42, kt + 0.2);
+        kg.gain.setValueAtTime(0.32, kt); kg.gain.exponentialRampToValueAtTime(0.0001, kt + 0.26); k.connect(kg); kg.connect(musicBus); k.start(kt); k.stop(kt + 0.3);
+      }
     };
     play(); musicTimer = setInterval(play, 6000);
   }
   const bus = { init, setMood(m) { mood = m; },
-    toggle() { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.8; return muted; }, isMuted: () => muted,
+    toggle() { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.9; return muted; }, isMuted: () => muted,
+    musicLevel: () => musicLevel,
+    nextMusicLevel() { musicLevel = ORDER[(ORDER.indexOf(musicLevel) + 1) % ORDER.length]; try { localStorage.setItem("arcana_music_level", musicLevel); } catch (e) {} if (musicBus) musicBus.gain.value = MUSIC_LEVELS[musicLevel]; return musicLevel; },
     pause() { held = true; if (ctx && ctx.state === "running") ctx.suspend(); }, resume() { held = false; if (ctx && ctx.state === "suspended" && !document.hidden) ctx.resume(); },
     hover: () => tone(1400, 0.04, { vol: 0.04, type: "square" }),
     click: () => { tone(660, 0.07, { vol: 0.09 }); tone(990, 0.09, { vol: 0.07, delay: 0.05 }); },

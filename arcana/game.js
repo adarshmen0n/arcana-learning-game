@@ -423,13 +423,14 @@ function pauseGame() {
   const box = document.createElement("div"); box.id = "pausebox";
   box.innerHTML = `<div class="pb"><div class="k">PAUSED</div><h1>${UI.esc(G.ch ? G.ch.title : "ARCANA")}</h1><p class="muted">Your progress is saved to this step of the chapter. You can come back any time.</p>
     <button class="btn primary" data-p="resume">Resume</button><button class="btn" data-p="lobby">Save and exit to lobby</button>
-    <button class="btn" data-p="sound">${Sound.isMuted() ? "Sound: off" : "Sound: on"}</button><button class="btn" data-p="close">Save and close the game</button></div>`;
+    <button class="btn" data-p="music">Music: ${Sound.musicLevel()}</button><button class="btn" data-p="sound">${Sound.isMuted() ? "All sound: off" : "All sound: on"}</button><button class="btn" data-p="close">Save and close the game</button></div>`;
   document.getElementById("frame").appendChild(box);
   const resume = () => { box.remove(); pausedNow = false; active.forEach((k) => g.scene.resume(k)); Sound.resume(); };
   box.onclick = (e) => {
     const b = e.target.closest("[data-p]"); if (!b) return;
     if (b.dataset.p === "resume") resume();
-    else if (b.dataset.p === "sound") { const m = Sound.toggle(); b.textContent = m ? "Sound: off" : "Sound: on"; }
+    else if (b.dataset.p === "sound") { const m = Sound.toggle(); b.textContent = m ? "All sound: off" : "All sound: on"; }
+    else if (b.dataset.p === "music") { b.textContent = "Music: " + Sound.nextMusicLevel(); }
     else saveAndLeave(b.dataset.p === "close");
   };
   box.querySelector("[data-p=resume]").focus();

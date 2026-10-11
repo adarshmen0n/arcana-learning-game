@@ -167,14 +167,14 @@ const Music = (() => {
   }
   function tick() {
     if (!on) return; const t = ac.currentTime + 0.05, bar = Math.floor(step / 16) % 4, ch = CH[bar], i = step % 16;
-    if (i === 0) { ch.forEach((m) => note(m - 12, t, 4.2, "sawtooth", 0.018, 900)); note(ch[0] - 24, t, 4.2, "triangle", 0.05, 400); }
-    if (i % 2 === 0) note(ch[(i / 2) % 4] + 12, t, 0.32, "square", 0.012, 2200 + 800 * Math.sin(step / 9));
-    if (i % 4 === 0) { const k = ac.createOscillator(), g = ac.createGain(); k.frequency.setValueAtTime(110, t); k.frequency.exponentialRampToValueAtTime(40, t + 0.18); g.gain.setValueAtTime(0.09, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22); k.connect(g); g.connect(out); k.start(t); k.stop(t + 0.25); }
+    if (i === 0) { ch.forEach((m) => note(m - 12, t, 4.2, "sawtooth", 0.045, 900)); note(ch[0] - 24, t, 4.2, "triangle", 0.13, 400); }
+    if (i % 2 === 0) note(ch[(i / 2) % 4] + 12, t, 0.32, "square", 0.03, 2200 + 800 * Math.sin(step / 9));
+    if (i % 4 === 0) { const k = ac.createOscillator(), g = ac.createGain(); k.frequency.setValueAtTime(110, t); k.frequency.exponentialRampToValueAtTime(40, t + 0.18); g.gain.setValueAtTime(0.24, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22); k.connect(g); g.connect(out); k.start(t); k.stop(t + 0.25); }
     step++; timer = setTimeout(tick, 268);
   }
   function start() {
     if (on || !pref()) return; try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
-    if (!out) { out = ac.createGain(); out.gain.value = 0.9; out.connect(ac.destination); }
+    if (!out) { out = ac.createGain(); out.gain.value = 0.9; const comp = ac.createDynamicsCompressor(); comp.threshold.value = -18; comp.ratio.value = 4; out.connect(comp); comp.connect(ac.destination); }
     ac.resume && ac.resume(); on = true; tick(); paint();
   }
   function stop() { on = false; clearTimeout(timer); paint(); }
@@ -483,8 +483,8 @@ function watchJob(id) {
       if ($("#pm")) $("#pm").textContent = "The server is restarting. Your game is saved and will continue in a moment...";
       return setTimeout(tick, 3000);
     }
-    if ($("#pf")) { $("#pf").style.width = j.pct + "%"; $("#pm").textContent = j.error ? j.error : j.message + (j.total ? ` (${j.ready}/${j.total} chapters)` : ""); }
-    if ($("#pb") && j.total) $("#pb").innerHTML = `<p class="muted small">${j.ready} of ${j.total} chapters built. Your game unlocks when every chapter is ready.</p>`;
+    if ($("#pf")) { $("#pf").style.width = j.pct + "%"; $("#pm").textContent = j.error ? j.error : j.message; }
+    if ($("#pb") && j.total) $("#pb").innerHTML = `<p class="muted small">${j.built ?? j.ready} of ${j.total} chapters built. Your game unlocks when every chapter is ready.</p>`;
     if (j.status === "done") { forget(); toast(j.mode === "offline" ? "Game ready in quick mode (the AI was busy). Press Rebuild in Quests later for full AI lessons." : "Game ready: " + (j.title || "")); await refresh(); return; }
     if (j.status === "error") { forget(); if ($("#msg")) $("#msg").innerHTML = `<div class="err">${esc(j.error)}</div>`; if ($("#go")) $("#go").disabled = false; toast(j.error); return; }
     setTimeout(tick, 1500);

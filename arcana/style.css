@@ -455,3 +455,8 @@ body.arcading #hint, body.arcading #arc-btn, body.arcading #touch > div:last-chi
 /* wide or tall windows: the side bands match the game instead of plain black */
 #stage { background: radial-gradient(ellipse at center, #06200e 0%, #020805 55%, #000 100%); }
 #frame { box-shadow: 0 0 0 1px rgba(57,255,20,.18), 0 0 40px rgba(57,255,20,.12); }
+
+/* mini-games: the world's top bar stays hidden the whole time (score updates used to bring it back over the question); only a small MENU button stays, above the question panel */
+body.arcading #hud { visibility: hidden !important; }
+body.arcading #hud #pausebtn { visibility: visible !important; position: absolute; top: .35cqw; right: 1.2cqw; height: 2.1cqw; min-height: 22px; padding: 0 .9cqw; pointer-events: auto; z-index: 70; }
+body.arcading #hud #pausebtn span { font-size: clamp(8px, .8cqw, 11px); }

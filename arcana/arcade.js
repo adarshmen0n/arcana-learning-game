@@ -17,10 +17,10 @@ class ArcadeBase extends Phaser.Scene {
   }
   header(kicker, question) {
     const { W, FONT, BODY } = ARC;
-    this.add.text(40, 10, kicker, { fontFamily: FONT, fontSize: "13px", color: "#39ff14", letterSpacing: 5 }).setAlpha(0.9).setDepth(42);
+    const kick = this.add.text(40, 10, kicker, { fontFamily: FONT, fontSize: "13px", color: "#39ff14", letterSpacing: 5 }).setAlpha(0.9).setDepth(42);
     this.qBack = this.add.graphics().setDepth(40);           // the question sits on its own panel above the game, so the board can never cover it
     this.qText = this.add.text(W / 2, 70, question, { fontFamily: BODY, fontSize: "26px", fontStyle: "700", color: "#e8ffe0", align: "center", wordWrap: { width: 1040 } }).setOrigin(0.5, 0.5).setDepth(41);
-    this.scoreText = this.add.text(W - 40, 8, "", { fontFamily: FONT, fontSize: "17px", color: "#39ff14" }).setOrigin(1, 0).setDepth(42);
+    this.scoreText = this.add.text(kick.x + kick.width + 28, 8, "", { fontFamily: FONT, fontSize: "15px", color: "#39ff14" }).setOrigin(0, 0).setDepth(42);   // top-left, next to the title (the MENU button owns the top-right corner)
   }
   setQuestion(t) {
     const q = this.qText;

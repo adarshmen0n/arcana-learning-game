@@ -275,7 +275,8 @@ TRANSCRIBE_PROMPT = ("Transcribe all the study content in this file as clean tex
 
 # name: (base url, env var for key(s), model env var, preferred model keywords, max document chars, output cap, vision, json mode)
 COMPAT = {
-    "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", ("GEMINI_API_KEY", "GOOGLE_API_KEY"), "GEMINI_MODEL", ["gemini-flash-latest", "gemini-3.5-flash", "gemini-3-flash", "gemini-flash", "gemini-pro-latest", "gemini"], 400_000, 16000, True, True),
+    "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", ("GEMINI_API_KEY", "GOOGLE_API_KEY"), "GEMINI_MODEL",
+               ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"], 400_000, 16000, True, True),   # Flash first (best); the Lite models have their own, separate free allowance per key
     "mistral": ("https://api.mistral.ai/v1", ("MISTRAL_API_KEY",), "MISTRAL_MODEL", ["mistral-small", "mistral-medium", "mistral-large", "mistral"], 100_000, 8000, False, True),
     "deepseek": ("https://api.deepseek.com/v1", ("DEEPSEEK_API_KEY",), "DEEPSEEK_MODEL", ["deepseek-chat"], 120_000, 8000, False, True),
     "openai": ("https://api.openai.com/v1", ("OPENAI_API_KEY",), "OPENAI_MODEL", ["gpt-4o-mini", "gpt-4.1-mini", "mini"], 200_000, 16000, True, True),
@@ -303,6 +304,10 @@ def _retry_after(headers, text):
             return min(float(v), 3600)
         except ValueError:
             pass
+    hms = re.search(r"retry in (?:(\d+)h)?(?:(\d+)m)?(\d+(?:\.\d+)?)s", text, re.I)      # Gemini: "Please retry in 10h10m2.2s"
+    if hms:
+        h, mi, sec = (float(x) if x else 0.0 for x in hms.groups())
+        return min(h * 3600 + mi * 60 + sec, 86400)
     m = re.search(r"retry(?:Delay)?\"?:?\s*\"?(\d+(?:\.\d+)?)s", text) or re.search(r"try again in (?:(\d+)m)?(\d+(?:\.\d+)?)s", text)
     if m:
         g = [x for x in m.groups() if x]
@@ -343,6 +348,12 @@ class CompatProvider(Provider):
                 if hit:
                     self.model = hit[0]
                     return self.model
+        elif self.name.startswith("gemini"):                     # Gemini: only the listed models, in order (others share Flash's allowance, reject requests or are slow)
+            for k in self.prefer:
+                if k in ids:
+                    self.model = k
+                    return self.model
+            raise Skip("every Gemini model on this key is resting", cooldown=120)
         else:
             for k in self.prefer:
                 hit = [i for i in ids if k in i.lower()]
@@ -352,7 +363,7 @@ class CompatProvider(Provider):
         if ids:
             self.model = ids[0]
             return self.model
-        raise Skip("no usable model found (set the *_MODEL variable in .env)", cooldown=300)
+        raise Skip("every model on this key is resting", cooldown=30) if self.bad else Skip("no usable model found (set the *_MODEL variable in .env)", cooldown=300)
 
     def _post(self, body):
         url = self.base + "/chat/completions"
@@ -367,6 +378,11 @@ class CompatProvider(Provider):
                 raise Skip("no credits on this key", cooldown=3600)
             if e.code == 413 or "too large" in low or "reduce your" in low or "context length" in low or "maximum context" in low:
                 raise Skip("request too large for this plan", cooldown=0)
+            if e.code == 429 and self.name.startswith("gemini") and self.model and not os.environ.get(self.model_env or "_"):
+                wait = _retry_after(e.headers, text)            # limits are per model: rest this model (for a minute or for the day) and keep the key working on the next one
+                m = self.model; self.bad.add(m); self.model = None
+                t = threading.Timer(max(wait, 5), lambda: self.bad.discard(m)); t.daemon = True; t.start()
+                raise Skip("model daily limit reached; trying another" if wait > 600 else "model busy; trying another", cooldown=0)
             if e.code == 429 and "upstream" in low and self.model and not os.environ.get(self.model_env or "_"):   # one free model is busy: use another one
                 m = self.model; self.bad.add(m); self.model = None
                 t = threading.Timer(600, lambda: self.bad.discard(m)); t.daemon = True; t.start()
@@ -379,6 +395,10 @@ class CompatProvider(Provider):
                 if self.model and not os.environ.get(self.model_env or "_"):
                     self.bad.add(self.model)
                     self.model = None
+                raise Skip("model unavailable; trying another", cooldown=0)
+            if e.code in (400, 404) and self.name.startswith("gemini") and self.model and not os.environ.get(self.model_env or "_") and "reasoning" not in low and "response_format" not in low:
+                m = self.model; self.bad.add(m); self.model = None             # this model refuses the request: skip it for an hour
+                t = threading.Timer(3600, lambda: self.bad.discard(m)); t.daemon = True; t.start()
                 raise Skip("model unavailable; trying another", cooldown=0)
             if e.code == 400 and "reasoning" in low:
                 self.no_reason = True
@@ -429,11 +449,11 @@ class CompatProvider(Provider):
 
     def _post_any_model(self, body):
         """Post; if the chosen model is busy or retired, pick the next usable model and try again (a few times)."""
-        for n in range(4):
+        for n in range(8):
             try:
                 return self._post(body)
             except Skip as sk:
-                if n < 3 and str(sk).startswith(("model busy", "model unavailable")):
+                if n < 7 and str(sk).startswith(("model busy", "model unavailable", "model daily limit")):
                     body["model"] = self.resolve_model()
                     if getattr(self, "no_reason", False):
                         body.pop("reasoning_effort", None)

@@ -505,6 +505,15 @@ def job_create(r):
     return {"id": job.id, "mode": job.mode}
 
 
+def job_cancel(r, jid):
+    u = r.need()
+    job = pipeline.JOBS.get(jid)
+    if not job or job.opts.get("owner") != u["id"]:
+        raise Err(404, "Unknown job.")
+    job.cancel()
+    return {"ok": True, "status": job.status}
+
+
 def job_get(r, jid):
     u = r.need()
     job = pipeline.JOBS.get(jid)
@@ -582,7 +591,7 @@ ROUTES = [
     ("POST", r"/api/profile", profile_set), ("DELETE", r"/api/account", account_delete),
     ("GET", r"/api/games", games_list), ("DELETE", r"/api/games/([a-z0-9]{4,40})", game_delete),
     ("GET", r"/api/scripts/([a-z0-9]+)", script_get),
-    ("POST", r"/api/jobs", job_create), ("GET", r"/api/jobs/([a-z0-9]+)", job_get),
+    ("POST", r"/api/jobs", job_create), ("GET", r"/api/jobs/([a-z0-9]+)", job_get), ("POST", r"/api/jobs/([a-z0-9]+)/cancel", job_cancel),
     ("POST", r"/api/events", events), ("GET", r"/api/progress", progress_get), ("POST", r"/api/progress", progress_set),
     ("GET", r"/api/adapt", adapt), ("GET", r"/api/stats", stats), ("GET", r"/api/roadmap", roadmap_get),
 ]

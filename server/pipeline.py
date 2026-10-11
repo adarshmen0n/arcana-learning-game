@@ -55,6 +55,10 @@ class PipelineError(Exception):
     pass
 
 
+class Cancelled(Exception):
+    pass
+
+
 # ----------------------------------------------------------------------------- schemas
 def _obj(props, required=None):
     return {"type": "object", "properties": props, "required": required or list(props), "additionalProperties": False}
@@ -112,6 +116,19 @@ class Job:
         self.lock = threading.RLock()
         self.chapters = {}
         self.resume = {}                                    # saved progress from before a server restart (plan, research notes, finished chapters)
+        self.cancelled = False
+
+    def cancel(self):
+        with self.lock:
+            self.cancelled = True
+            if self.status in ("queued", "running"):
+                self.status, self.error, self.message = "cancelled", "Cancelled", "Cancelled"
+        self.log("Cancelled by the student")
+
+    def check(self):
+        """Stop here if the student cancelled (called between steps of the build)."""
+        if self.cancelled:
+            raise Cancelled()
 
     def checkpoint(self, **extra):
         """Save the build so far; a restarted server picks it up here instead of losing it."""
@@ -214,7 +231,10 @@ def _queue_position(job):
 
 
 def _run(job: Job):
-    while not _slots.acquire(timeout=3):                  # wait for a free build slot and tell the student where they are in line
+    while not _slots.acquire(timeout=3):
+        if job.cancelled:                                   # cancelled while waiting in line
+            _forget(job)
+            return                  # wait for a free build slot and tell the student where they are in line
         n = _queue_position(job)
         job.message = f"In the queue: {n} game{'s' if n != 1 else ''} ahead of you" if n else "Starting soon"
     try:
@@ -244,6 +264,7 @@ def _build(job: Job):
                 text = ingest._clean(llm.transcribe(job.data, info["mime"], tally=job.usage, log=job.log))
             if info["truncated"]:
                 job.log(f"Notice: the file is very long. Only the first {ingest.MAX_CHARS:,} characters were used.")
+        job.check()
         words = len(text.split())
         job.log(f"{words:,} words found")
         if not job.resume.get("text"):
@@ -273,6 +294,7 @@ def _build(job: Job):
         problems = check_script(job.script)
         if problems:
             raise PipelineError("Generated game failed validation: " + "; ".join(problems[:3]))
+        job.check()                                      # cancelled at the last moment: no game is saved
         db.save_script(job.id, job.script)
         if job.mode == "ai" and not job.script.get("quick") and not cached:
             db.cache_put(h, job.id)
@@ -282,8 +304,14 @@ def _build(job: Job):
         job.pct, job.status = 100, "done"
         _forget(job)
         job.set("done", 100, "Your game is ready")
+    except Cancelled:
+        job.status, job.error, job.message = "cancelled", "Cancelled", "Cancelled"
+        _forget(job)
     except (ingest.IngestError, llm.LLMError, PipelineError, ValueError) as e:
-        job.status, job.error = "error", str(e)
+        if job.cancelled:
+            job.status, job.error = "cancelled", "Cancelled"
+        else:
+            job.status, job.error = "error", str(e)
         _forget(job)
         job.log("Stopped: " + str(e))
     except Exception as e:  # unexpected: details stay in the server log, the player gets a short message
@@ -315,6 +343,7 @@ def _ai(job: Job, text: str):
     else:
         plan = clean_plan(llm.call_json(SYS, prompt, ANALYZE_SCHEMA, doc=doc_block(marked), max_tokens=14000, tally=tally, log=job.log))
         plan = plan_worlds(align_parts(plan, parts))
+    job.check()
     job.total = len(plan["chapters"])
     job.script = {"schemaVersion": 2, "projectId": job.id, "title": plan["title"], "audience": {"level": plan["level"], "modes": ["student"]},
                   "summary": plan["summary"], "chapters": [], "finalBoss": final_boss(plan),
@@ -377,6 +406,7 @@ def _ai(job: Job, text: str):
     def build(i):
         llm.patience(build_patience)
         for attempt in range(1, 7):
+            job.check()
             try:
                 return gen_chapter(job, plan, i, doc_for(i), index, parts[i])
             except llm.LLMError as e:
@@ -527,6 +557,7 @@ def gen_chapter(job, plan, i, doc, index=None, part=None):
              "explanation: one sentence stating why the answer is right. concept_id must be one of the concept ids above. "
              "evidence: a short VERBATIM quote (max 160 characters) copied from the study material that proves the correct answer; never invent it. "
              "skill: recall, understand, apply or analyze, mixed across the set, with the harder skills toward the end. Never repeat a question.")
+    job.check()
     job.log(f"Writing chapter {i + 1}: lessons and knowledge tablets")
     # one AI call writes the lessons, tablets and mission together (free AI keys allow only a few calls a minute, so fewer calls = a faster game)
     gen = llm.call_json(SYS, lessons + "\n\nIN THE SAME ANSWER, ALSO WRITE:\n" + tablets[len(head):], TEACH_SCHEMA, doc=doc, max_tokens=16000, tally=job.usage, log=job.log)
@@ -554,6 +585,7 @@ def gen_chapter(job, plan, i, doc, index=None, part=None):
     focus = ("\nWhat the lessons taught in this chapter (ask ONLY about ideas explained here, so every question checks something the student was taught):\n" + taught + "\n\n") if taught else "\n"
     qa = head + focus + "Write quiz questions for this chapter.\n- obstacles: 2 questions, each with a hint that nudges without revealing the answer.\n- match: 3 questions. arcade: 6 questions (they are played in three mini-games).\n\n" + rules
     qb = head + focus + "Write more quiz questions for this chapter (test understanding and application of what was taught).\n- test: 4 questions. spare: 3 extra questions.\n\n" + rules
+    job.check()
     job.log(f"Writing chapter {i + 1}: questions")
     qall = (head + focus + "Write all the quiz questions for this chapter.\n- obstacles: 2 questions, each with a hint that nudges without revealing the answer.\n"
             "- match: 3 questions. arcade: 6 questions (they are played in three mini-games).\n- test: 4 questions that test understanding and application. spare: 3 extra questions.\n\n" + rules)

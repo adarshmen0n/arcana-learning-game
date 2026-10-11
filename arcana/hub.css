@@ -259,3 +259,5 @@ body.hub header { flex-wrap: nowrap; min-width: 0; }
   #stagebg { contain: strict; }
 }
 .lowgfx #stagebg canvas { image-rendering: auto; }
+
+#unpick, #jobcancel { margin: 10px 0 0; }

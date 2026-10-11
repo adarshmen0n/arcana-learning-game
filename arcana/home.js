@@ -444,7 +444,12 @@ function wireRoad() {
 function wireUpload() {
   let file = null;
   api("/api/status").then((s) => { $("#note").textContent = s.llm ? "Forging takes 2 to 5 minutes. Chapter 1 opens as soon as it is ready." : "AI is offline right now, so a simpler game will be built from your text."; }).catch(() => {});
-  const setFile = (f) => { file = f; $("#dropt").textContent = f ? `${f.name} (${Math.round(f.size / 1024)} KB)` : "Click to choose a file, or drop it here"; };
+  const setFile = (f) => {
+    file = f; $("#dropt").textContent = f ? `${f.name} (${Math.round(f.size / 1024)} KB)` : "Click to choose a file, or drop it here";
+    let x = $("#unpick");
+    if (f && !x) { x = document.createElement("button"); x.type = "button"; x.id = "unpick"; x.className = "gbtn sm danger"; x.innerHTML = "<span>&#10005; Remove file</span>"; $("#drop").after(x); x.onclick = (e) => { e.preventDefault(); $("#file").value = ""; setFile(null); }; }
+    if (!f && x) x.remove();
+  };
   $("#file").onchange = (e) => setFile(e.target.files[0] || null);
   const drop = $("#drop"); drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); }; drop.ondragleave = () => drop.classList.remove("over");
   drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); };
@@ -470,11 +475,23 @@ function resumeWatch() { let id = null; try { id = localStorage.getItem("arcana_
 function watchJob(id) {
   try { localStorage.setItem("arcana_job", id); } catch (e) {}
   const box = $("#msg"); if (!box) return;
-  box.innerHTML = '<div class="pbar"><i id="pf"></i></div><p id="pm" class="muted small">Building your game...</p><div id="pb"></div>';
+  box.innerHTML = '<div class="pbar"><i id="pf"></i></div><p id="pm" class="muted small">Building your game...</p><div id="pb"></div><button class="gbtn sm danger" id="jobcancel" type="button"><span>&#10005; Cancel</span></button>';
+  let stopped = false;
+  $("#jobcancel").onclick = async () => {
+    const b = $("#jobcancel");
+    if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.innerHTML = "<span>Tap again to cancel this game</span>"; setTimeout(() => { if (b.isConnected) { b.dataset.sure = ""; b.innerHTML = "<span>&#10005; Cancel</span>"; } }, 4000); return; }
+    stopped = true; b.disabled = true;
+    try { await api("/api/jobs/" + id + "/cancel", "POST", {}); } catch (e) {}
+    try { localStorage.removeItem("arcana_job"); } catch (e) {}
+    if ($("#msg")) $("#msg").innerHTML = '<div class="muted small">Cancelled. Choose another file whenever you are ready.</div>';
+    if ($("#go")) $("#go").disabled = false;
+    toast("Game build cancelled");
+  };
   if ($("#go")) $("#go").disabled = true;
   let misses = 0;
   const forget = () => { try { localStorage.removeItem("arcana_job"); } catch (e) {} };
   const tick = async () => {
+    if (stopped) return;
     let j;
     try { j = await api("/api/jobs/" + id); misses = 0; }
     catch (er) {                                          // connection lost or the server is restarting: the build continues on the server, so keep waiting
@@ -486,6 +503,7 @@ function watchJob(id) {
     if ($("#pf")) { $("#pf").style.width = j.pct + "%"; $("#pm").textContent = j.error ? j.error : j.message; }
     if ($("#pb") && j.total) $("#pb").innerHTML = `<p class="muted small">${j.built ?? j.ready} of ${j.total} chapters built. Your game unlocks when every chapter is ready.</p>`;
     if (j.status === "done") { forget(); toast(j.mode === "offline" ? "Game ready in quick mode (the AI was busy). Press Rebuild in Quests later for full AI lessons." : "Game ready: " + (j.title || "")); await refresh(); return; }
+    if (j.status === "cancelled") { forget(); if ($("#msg")) $("#msg").innerHTML = '<div class="muted small">Cancelled.</div>'; if ($("#go")) $("#go").disabled = false; return; }
     if (j.status === "error") { forget(); if ($("#msg")) $("#msg").innerHTML = `<div class="err">${esc(j.error)}</div>`; if ($("#go")) $("#go").disabled = false; toast(j.error); return; }
     setTimeout(tick, 1500);
   };

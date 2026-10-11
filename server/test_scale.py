@@ -149,6 +149,32 @@ ok(again.status == "done" and sorted(built) == [1, 2] and len(again.chapters) ==
 ok(not db.jobs_unfinished(), "a finished build leaves no checkpoint behind")
 _llm.call_json, pipeline.gen_chapter, pipeline.split_parts = real_call, real_gen, real_split
 
+# 3c. cancelling a build: it stops, frees its slot and saves no game
+real_offline2 = pipeline._offline
+
+
+def slow_offline2(job, text):
+    for _ in range(40):
+        time.sleep(0.05)
+        job.check()
+    real_offline2(job, text)
+
+
+pipeline._offline = slow_offline2
+cj = pipeline.start("c.txt", text=TEXT + " cancel me.", opts={"offline": True, "fresh": True, "owner": None})
+time.sleep(0.4)
+cj.cancel()
+wait(cj, 20)
+ok(cj.status == "cancelled" and not db.q("SELECT 1 FROM scripts WHERE id=?", (cj.id,), one=True), "a cancelled build stops and saves no game")
+qjobs = [pipeline.start("q2.txt", text=TEXT + f" queue {k}.", opts={"offline": True, "fresh": True}) for k in range(pipeline.MAX_PARALLEL + 1)]
+time.sleep(0.2)
+waiting = [j for j in qjobs if j.status == "queued"][0]
+waiting.cancel()
+for j in qjobs:
+    wait(j, 30)
+ok(waiting.status == "cancelled" and all(j.status == "done" for j in qjobs if j is not waiting), "a build cancelled while waiting in line never starts; the others finish")
+pipeline._offline = real_offline2
+
 # 4. static files: gzip, ETag, 304
 PORT = 5197
 srv = server.Server(("127.0.0.1", PORT), functools.partial(server.Handler, directory=str(config.ROOT / "arcana")))

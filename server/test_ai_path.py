@@ -96,7 +96,7 @@ class FakeClaude(Quiet):
 def compat_handler(name, behaviour):
     class H(Quiet):
         def do_GET(self):
-            self.reply(200, {"data": [{"id": "models/whisper-x"}, {"id": "models/big-model-70b"}]})
+            self.reply(200, {"data": [{"id": "models/whisper-x"}, {"id": "models/big-model-70b"}, {"id": "models/gemini-flash-latest"}, {"id": "models/gemini-flash-lite-latest"}]})   # like the real services
 
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))

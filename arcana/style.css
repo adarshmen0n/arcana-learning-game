@@ -460,3 +460,8 @@ body.arcading #hint, body.arcading #arc-btn, body.arcading #touch > div:last-chi
 body.arcading #hud { visibility: hidden !important; }
 body.arcading #hud #pausebtn { visibility: visible !important; position: absolute; top: .35cqw; right: 1.2cqw; height: 2.1cqw; min-height: 22px; padding: 0 .9cqw; pointer-events: auto; z-index: 70; }
 body.arcading #hud #pausebtn span { font-size: clamp(8px, .8cqw, 11px); }
+
+/* phones: no glow shadows or endless pulse animations on top of the moving game (each forces the phone to blend them again every frame) */
+.lowgfx #hud *, .lowgfx #cb *, .lowgfx .panel, .lowgfx .panel *, .lowgfx #ctouch button, .lowgfx #touch button, .lowgfx #arc-btn { text-shadow: none !important; box-shadow: none !important; }
+.lowgfx #frame { box-shadow: none; }
+.lowgfx *, .lowgfx *::before, .lowgfx *::after { animation-iteration-count: 1 !important; }

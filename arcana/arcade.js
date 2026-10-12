@@ -16,6 +16,7 @@ class ArcadeBase extends Phaser.Scene {
     return this.add.image(0, 0, key).setOrigin(0).setDepth(depth);
   }
   backdrop() {
+    if (typeof Art !== "undefined" && Art.RS !== 1) this.cameras.main.setOrigin(0, 0).setZoom(Art.RS);   // phones: smaller canvas, same picture
     const { W, H, G } = ARC, g = this.make.graphics({ add: false });
     g.fillStyle(0x000000, 1).fillRect(0, 0, W, H);
     g.fillGradientStyle(0x001a06, 0x001a06, 0x000000, 0x000000, 0.9).fillRect(0, 0, W, H);
@@ -346,7 +347,7 @@ class HillScene extends ArcadeBase {
   create() {
     const { W, H } = ARC; this.backdrop(); this.header("ARCADE // HILL CLIMB RALLY", "");
     this.k = this.input.keyboard.addKeys("A,D,W,S,LEFT,RIGHT,UP,DOWN,SPACE"); this.input.keyboard.addCapture("LEFT,RIGHT,UP,DOWN,SPACE");
-    this.ptr = 0; this.input.on("pointerdown", (p) => (this.ptr = p.x > W / 2 ? 1 : -1)); this.input.on("pointerup", () => (this.ptr = 0));
+    this.ptr = 0; this.input.on("pointerdown", (p) => (this.ptr = p.x > this.scale.width / 2 ? 1 : -1)); this.input.on("pointerup", () => (this.ptr = 0));
     this.sky = this.add.graphics().setDepth(1); this.g = this.add.graphics().setDepth(5); this.fx = this.add.graphics().setDepth(8);
     this.round = 0; this.right = 0; this.wrong = 0; this.gates = []; this.zones = []; this.cans = []; this.gateTexts = [];
     this.car = { x: 200, y: 0, vx: 0, vy: 0, ang: 0, av: 0, ground: true, spin: 0 }; this.car.y = this.ty(200); this.fuel = 100; this.lastSafe = 200; this.camX = 0;

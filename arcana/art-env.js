@@ -486,5 +486,6 @@ const Art = (() => {
     return matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
   })();
   if (LOW) document.documentElement.classList.add("lowgfx");
-  return { W, H, GROUND, TW, LAYER_BOTTOM, LOW, buildTheme, util: { mk, lg, glow, rgba, mix, R, rnd, wrap, setSeed: (s) => (seed = s) } };
+  const RS = LOW ? 0.75 : 1;                                   // phones draw the game at 75% size (44% fewer pixels a frame); the camera zoom keeps every position the same
+  return { W, H, GROUND, TW, LAYER_BOTTOM, LOW, RS, buildTheme, util: { mk, lg, glow, rgba, mix, R, rnd, wrap, setSeed: (s) => (seed = s) } };
 })();

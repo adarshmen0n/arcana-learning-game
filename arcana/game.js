@@ -51,6 +51,7 @@ class World extends Phaser.Scene {
   constructor() { super("world"); }
 
   create() {
+    this.cameras.main.setOrigin(0, 0).setZoom(Art.RS);          // phones: smaller canvas, same picture
     this.mode = "none"; this.themeObjs = []; this.layers = []; this.entities = []; this.orbs = []; this.control = false;
     this.camX = 0; this.hx = 140; this.hy = GROUND; this.vx = 0; this.vy = 0; this.onGround = true; this.face = 1;
     this.limitX = 1e9; this.active = null; this.exitX = 1e9; this.interactCb = null; this.exitCb = null; this.burstTint = NEON_HEX;
@@ -611,6 +612,6 @@ if (matchMedia("(pointer: coarse)").matches) {
 (async () => {
   try { await Promise.race([Promise.all([document.fonts.load('900 20px Orbitron'), document.fonts.load('700 20px Rajdhani')]), new Promise((r) => setTimeout(r, 2500))]); } catch (e) {}
   try { await Promise.race([loadHero(), new Promise((r) => setTimeout(r, 2500))]); } catch (e) {}   // the ranger's suit and trim
-  const game = new Phaser.Game({ type: Phaser.AUTO, parent: "game", width: W, height: H, backgroundColor: "#000", scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [World, MazeScene, ShooterScene, SnakeScene, HillScene], render: { antialias: true, antialiasGL: !Art.LOW, powerPreference: "high-performance" }, fps: { target: 60, limit: 60, smoothStep: true }, disableContextMenu: true });
+  const game = new Phaser.Game({ type: Phaser.AUTO, parent: "game", width: Math.round(W * Art.RS), height: Math.round(H * Art.RS), backgroundColor: "#000", scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [World, MazeScene, ShooterScene, SnakeScene, HillScene], render: { antialias: true, antialiasGL: !Art.LOW, powerPreference: "high-performance" }, fps: { target: 60, limit: 60, smoothStep: true }, disableContextMenu: true });
   window.__arcana = { game, G, V };
 })();

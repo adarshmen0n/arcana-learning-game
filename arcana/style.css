@@ -328,7 +328,7 @@ html, body { overscroll-behavior: none; touch-action: manipulation; }
 #cb .slot { position: relative; width: 7.2cqw; padding: .7cqw .5cqw .5cqw; background: rgba(2,10,4,.85); border: 1px solid rgba(57,255,20,.4); text-align: center; clip-path: polygon(.7cqw 0, 100% 0, 100% calc(100% - .7cqw), calc(100% - .7cqw) 100%, 0 100%, 0 .7cqw); overflow: hidden; transition: all .15s; }
 #cb .slot kbd { display: block; font: 900 1.5cqw var(--head); color: var(--neon); text-shadow: 0 0 10px rgba(57,255,20,.7); } #cb .slot span { font: 700 .7cqw var(--head); letter-spacing: .1em; color: #bfe8b6; } #cb .slot em { position: absolute; right: .4cqw; top: .2cqw; font: 700 .7cqw var(--head); color: #5eead4; font-style: normal; } #cb .slot em.lv { color: #888; }
 #cb .slot.ready { border-color: #39ff14; box-shadow: 0 0 14px rgba(57,255,20,.35); } #cb .slot.dim, #cb .slot.locked { opacity: .45; } #cb .slot .cd { position: absolute; inset: auto 0 0 0; background: rgba(0,0,0,.65); height: 0; }
-#fact { position: absolute; left: 2.2cqw; bottom: 8.6cqw; max-width: 34cqw; padding: .9cqw 1.3cqw; background: rgba(2,14,12,.92); border-left: .35cqw solid #5eead4; clip-path: polygon(0 0, 100% 0, calc(100% - .8cqw) 100%, 0 100%); } #fact.hidden { display: none; } #fact.pop { animation: fin .35s; } @keyframes fin { from { opacity: 0; transform: translateX(-3cqw); } }
+#fact { position: absolute; left: 2.2cqw; bottom: 8.6cqw; max-width: 34cqw; padding: .9cqw 1.3cqw; background: rgba(2,14,12,.92); border-left: .35cqw solid #5eead4; clip-path: polygon(0 0, 100% 0, calc(100% - .8cqw) 100%, 0 100%); } #fact.hidden { display: none; } #fact.factin { animation: fin .35s; } @keyframes fin { from { opacity: 0; transform: translateX(-3cqw); } }
 #fact .k { font: 700 .8cqw var(--head); letter-spacing: .25em; color: #5eead4; margin-bottom: .3cqw; } #fact .k span { color: #7fa8a2; letter-spacing: .1em; } #fact p { margin: 0; font-size: 1.35cqw; line-height: 1.25; color: #e8fffb; }
 #ctouch { display: none; }
 @media (pointer: coarse) { #ctouch { display: grid !important; grid-template-columns: repeat(4, 1fr); gap: 1cqw; position: absolute; right: 2cqw; bottom: 9cqw; width: 36cqw; pointer-events: auto; } #ctouch button { padding: 1.4cqw 0; font: 900 1.6cqw var(--head); background: rgba(2,10,4,.8); color: var(--neon); border: 1.5px solid rgba(57,255,20,.6); } #ctouch button small { display: block; font-size: .6cqw; letter-spacing: .1em; } #ctouch button.on { background: var(--neon); color: #021; } }
@@ -399,7 +399,7 @@ p.lesson { font-size: clamp(14px, 1.7cqw, 22px); line-height: 1.45; }
   #ctouch [data-a="a2"]     { right: 2.4cqw; bottom: 29.4cqw; width: 5.4cqw; color: #5eead4; border-color: rgba(94,234,212,.5); background: rgba(94,234,212,.07); }
   #ctouch [data-a="a3"]     { right: 2.4cqw; bottom: 35.8cqw; width: 5.4cqw; color: #5eead4; border-color: rgba(94,234,212,.5); background: rgba(94,234,212,.07); }
   #fact { bottom: auto; top: 9cqw; left: 50%; transform: translateX(-50%); max-width: 46cqw; }
-  #fact.pop { animation: none; }
+  #fact.factin { animation: none; }
 }
 /* phones: cheaper overlays (no blur filters, fewer glows) */
 @media (pointer: coarse) {

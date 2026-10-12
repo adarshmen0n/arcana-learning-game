@@ -102,7 +102,7 @@ const Combat = (() => {
     FQ.q.push({ ...f, big }); if (FQ.busy) return; FQ.busy = true;
     const next = () => {
       const x = FQ.q.shift(); const el = $("#fact"); if (!x) { FQ.busy = false; el.classList.add("hidden"); return; }
-      el.innerHTML = `<div class="k">${x.big ? "KNOWLEDGE STRIKE" : "KNOWLEDGE SHARD"} <span>// ${UI.esc(x.concept.toUpperCase())}</span></div><p>${UI.esc(x.text)}</p>`; el.className = x.big ? "big" : ""; void el.offsetWidth; el.classList.add("pop");
+      el.innerHTML = `<div class="k">${x.big ? "KNOWLEDGE STRIKE" : "KNOWLEDGE SHARD"} <span>// ${UI.esc(x.concept.toUpperCase())}</span></div><p>${UI.esc(x.text)}</p>`; el.className = x.big ? "big" : ""; void el.offsetWidth; el.classList.add("factin");
       setTimeout(next, x.big ? 5200 : 4200);
     };
     next();

@@ -154,8 +154,8 @@ const UI = (() => {
     $("#hud").innerHTML = `
       <div class="hp"><div class="avwrap"><svg class="ring" viewBox="0 0 64 64"><circle cx="32" cy="32" r="29" class="trk"/><circle id="xpring" cx="32" cy="32" r="29" class="arc"/></svg><div class="avatar" id="avatar"></div><div class="lvl" id="lvl">1</div></div>
         <div class="hpcol"><div class="name" id="pname">RANGER</div><div class="hearts" id="hearts"></div></div></div>
-      <div class="mid"><div id="chapter-name"></div><div id="track"></div><div id="objective"></div></div>
-      <div class="right"><div id="streak" class="hidden">${icon("flame")}<b id="streakn">0</b></div><div id="score">${icon("star", "gold")}<span id="scoreval">0</span><div id="pops"></div></div><button class="iconbtn menubtn" id="pausebtn" title="Pause menu: save, exit, sound (Esc)"><b>II</b><span>MENU</span></button><button class="iconbtn" id="full" title="Fullscreen">${icon("full")}</button><button class="iconbtn" id="mute" title="Mute (M)">${icon("sound")}</button></div>`;
+      <div class="mid"><div id="chapter-name"></div><div id="track"></div><div id="stepline"><div class="bar"><i id="stepfill"></i></div><span id="steptxt"></span></div><div id="objective"></div></div>
+      <div class="right"><div id="streak" class="hidden">${icon("flame")}<b id="streakn">0</b></div><div id="score">${icon("star", "gold")}<span id="scoreval">0</span><div id="pops"></div></div><button class="iconbtn menubtn" id="pausebtn" title="Pause menu: save, exit, sound (Esc)"><b>II</b><span>MENU</span></button><button class="iconbtn hidden" id="full" title="Fullscreen">${icon("full")}</button><button class="iconbtn hidden" id="mute" title="Mute (M)">${icon("sound")}</button></div>`;
     $("#mute").onclick = toggleMute; $("#full").onclick = () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.().catch(() => {}); }; hudBuilt = true; setPlayer(player.name, player.gender);
   }
   function toggleMute() { const m = Sound.toggle(); $("#mute").classList.toggle("off", m); $("#mute").innerHTML = icon(m ? "muted" : "sound"); }
@@ -170,7 +170,8 @@ const UI = (() => {
     [...hearts.children].forEach((s, i) => { const on = i < hp, was = s.classList.contains("on"); if (was && !on) { s.classList.add("lost"); setTimeout(() => s.classList.remove("lost"), 700); } s.classList.toggle("on", on); });
     if (lastHp !== null && hp > lastHp) toast("Hearts restored", true); lastHp = hp;
     const track = $("#track"); if (track.children.length !== types.length) track.innerHTML = types.map((t) => `<div class="stn"><i>${icon(STATION[t] || "star")}</i></div>`).join("");
-    track.classList.toggle("dense", types.length > 11); track.classList.toggle("xdense", types.length > 16);   // long chapters: smaller step icons so the bar fits
+    track.classList.toggle("dense", types.length > 11); track.classList.toggle("xdense", types.length > 16);
+    const sf = $("#stepfill"), stx = $("#steptxt"); if (sf) { sf.style.width = Math.round((Math.min(done, types.length) / Math.max(1, types.length)) * 100) + "%"; stx.textContent = `STEP ${Math.min(done + 1, types.length)} / ${types.length}`; }   // long chapters: smaller step icons so the bar fits
     [...track.children].forEach((n, i) => { n.classList.toggle("done", i < done); n.classList.toggle("cur", i === done); });
     const cur = track.children[done]; if (cur && track.scrollWidth > track.clientWidth) track.scrollLeft = cur.offsetLeft - track.clientWidth / 2;
     const obj = $("#objective"); if (obj.dataset.txt !== next) { obj.dataset.txt = next; obj.innerHTML = next ? `<span>OBJECTIVE</span> ${esc(next)}` : ""; obj.classList.remove("flash"); void obj.offsetWidth; obj.classList.add("flash"); }

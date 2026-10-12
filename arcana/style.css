@@ -18,8 +18,8 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; background: #000; color: var(--ink); font-family: var(--body); font-weight: 600; overflow: hidden; user-select: none; }
 #stage { position: relative; width: 100vw; height: 100vh; display: grid; place-items: center; background: #000; }
-#frame { position: relative; width: min(100vw, calc(100vh * 16 / 9)); aspect-ratio: 16 / 9; overflow: hidden; container-type: inline-size; background: #000; }
-#game, #game canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; }
+#frame { position: relative; width: 100vw; height: 100vh; height: 100dvh; overflow: hidden; container-type: size; background: #000; }   /* the game fills the whole screen */
+#game { position: absolute; inset: 0; overflow: hidden; display: block; background: #000; } #game canvas { display: block; }   /* Phaser sizes and centres the canvas (cover on wide screens) */
 .hidden { display: none !important; }
 #fx { position: absolute; inset: 0; pointer-events: none; z-index: 5;
   background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%), repeating-linear-gradient(0deg, rgba(0,0,0,.10) 0 1px, transparent 1px 3px); mix-blend-mode: multiply; }
@@ -465,3 +465,51 @@ body.arcading #hud #pausebtn span { font-size: clamp(8px, .8cqw, 11px); }
 .lowgfx #hud *, .lowgfx #cb *, .lowgfx .panel, .lowgfx .panel *, .lowgfx #ctouch button, .lowgfx #touch button, .lowgfx #arc-btn { text-shadow: none !important; box-shadow: none !important; }
 .lowgfx #frame { box-shadow: none; }
 .lowgfx *, .lowgfx *::before, .lowgfx *::after { animation-iteration-count: 1 !important; }
+
+/* ===================== top bar v3: open, balanced layout ===================== */
+#hud { grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr) !important; column-gap: 3cqw !important; padding: 2cqw 2.8cqw !important; }
+#hud .hp { gap: 1.4cqw !important; align-items: center; }
+#hud .avwrap { width: clamp(40px, 4.6cqw, 64px) !important; }
+#hud .hpcol { display: grid; gap: .7cqw; min-width: 0; }
+#hud .hearts { display: flex; gap: .45cqw; flex-wrap: nowrap; }
+#hud .hearts .hrt svg { width: clamp(14px, 1.6cqw, 22px); height: auto; }
+#hud .mid { display: grid; justify-items: center; gap: .9cqw; padding-top: .2cqw; }
+#chapter-name { margin: 0 !important; }
+#track { margin-top: 0 !important; max-width: 100%; }
+#objective { margin-top: 0 !important; }
+#stepline { display: none; align-items: center; gap: 1cqw; width: min(100%, 34cqw); }
+#stepline .bar { flex: 1; height: clamp(4px, .5cqw, 7px); background: rgba(57,255,20,.15); border-radius: 99px; overflow: hidden; }
+#stepline .bar i { display: block; height: 100%; width: 0; background: var(--neon); border-radius: 99px; transition: width .4s; }
+#stepline span { font: 700 clamp(9px, .9cqw, 13px) var(--head); letter-spacing: .14em; color: var(--neon); white-space: nowrap; }
+#hud .right { gap: 1.4cqw !important; align-items: center; }
+#hud .right #score { gap: .6cqw; }
+/* Arc Search sits under the score and MENU on the right, apart from the hearts */
+#arc-btn.ingame { left: auto !important; right: 2.8cqw !important; top: calc(2cqw + clamp(28px, 3cqw, 40px) + 1.6cqw) !important; bottom: auto !important; }
+/* smaller screens: the long row of step icons becomes one clean progress bar, the name steps aside */
+@container (max-width: 1100px) {
+  #track { display: none !important; }
+  #stepline { display: flex; }
+  #hud #pname { display: none; }
+  #hud .mid { gap: .7cqw; }
+}
+@container (max-width: 760px) {
+  #hud { padding: 1.6cqw 2.2cqw !important; column-gap: 2cqw !important; }
+  #objective { font-size: 11px !important; }
+  #objective span { display: none; }
+}
+
+/* full-screen play: phone fight buttons are placed by screen height so they never reach the top bar */
+@media (pointer: coarse) {
+  #ctouch [data-a="strike"] { bottom: 4.6cqh !important; }
+  #ctouch [data-a="kick"] { bottom: 3.9cqh !important; }
+  #ctouch [data-a="dodge"] { bottom: 20.6cqh !important; }
+  #ctouch [data-a="guard"] { bottom: 30.9cqh !important; }
+  #ctouch [data-a="launch"] { bottom: 29.5cqh !important; }
+  #ctouch [data-a="jump"] { bottom: 23.8cqh !important; }
+  #ctouch [data-a="grab"] { bottom: 5.3cqh !important; }
+  #ctouch [data-a="exec"] { bottom: 18.8cqh !important; }
+  #ctouch [data-a="a1"] { bottom: 40.9cqh !important; }
+  #ctouch [data-a="a2"] { bottom: 52.3cqh !important; }
+  #ctouch [data-a="a3"] { bottom: 63.6cqh !important; }
+  #touch { padding-bottom: 3cqh !important; }
+}

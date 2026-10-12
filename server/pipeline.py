@@ -551,7 +551,9 @@ def gen_chapter(job, plan, i, doc, index=None, part=None):
                "terms: 2 to 4 key terms with short meanings (max 90 characters each). concept_ids: the concepts it covers.\n"
                "- mission: if the concepts contain a process or sequence use kind 'order' with 4-6 steps in the CORRECT order (items), pairs empty; "
                "otherwise kind 'match_pairs' with 4 term/definition pairs (short definitions, max 70 characters), items empty.")
-    rules = ("Question rules: four options (each max 80 characters), exactly one correct, plausible distractors built from real misconceptions or neighbouring concepts, "
+    rules = ("Before you answer, check every question yourself: the correct option must be exactly what your evidence quote says, the other three must be clearly wrong, "
+             "and if you are not completely sure, leave the question out. "
+             "Question rules: four options (each max 80 characters), exactly one correct, plausible distractors built from real misconceptions or neighbouring concepts, "
              "never 'all of the above' or 'none of the above'. correct_index is 0-3 and MUST vary across questions. "
              "Every question must be answerable from the material alone (no outside trivia). Difficulty 1-3 rising through the chapter. "
              "explanation: one sentence stating why the answer is right. concept_id must be one of the concept ids above. "
@@ -596,7 +598,8 @@ def gen_chapter(job, plan, i, doc, index=None, part=None):
         gen.update(llm.call_json(SYS, qb, QUESTION_SET_B, doc=doc, max_tokens=12000, tally=job.usage, log=job.log))
     if not gen["obstacles"] and not gen["match"] and not gen["arcade"]:
         gen.update(llm.call_json(SYS, qa, QUESTION_SET_A, doc=doc, max_tokens=12000, tally=job.usage, log=job.log))
-    gen = verify(job, gen, doc, i)
+    if _verify_on():                                              # the separate answer check costs a third of the AI calls: kept for paid keys, skipped on free ones
+        gen = verify(job, gen, doc, i)
     gen = dedupe(job, gen, i)
     if index is not None:
         gen = ground(job, gen, index, i)
@@ -611,6 +614,15 @@ def lesson_text(gen):
     for t in gen.get("tablets", []):
         parts += [str(x) for x in t.get("points", [])] + [str(t.get("example", ""))]
     return "\n".join("- " + x.strip() for x in parts if x and x.strip())[:6000]
+
+
+def _verify_on():
+    v = os.environ.get("ARCANA_VERIFY", "auto").lower()
+    if v in ("1", "on", "yes", "true"):
+        return True
+    if v in ("0", "off", "no", "false"):
+        return False
+    return llm.concurrency() == 3 and any(isinstance(p, llm.AnthropicProvider) and p.dead is None for p in llm.PROVIDERS)   # auto: on with a Claude key
 
 
 def verify(job, gen, doc, i):

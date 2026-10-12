@@ -393,14 +393,14 @@ const ARCADE_INFO = {
 async function playArcade(scene, ent) {
   const s = ent.s, key = s.type, info = ARCADE_INFO[key];
   await UI.chapterCard({ kicker: "Arcade level", title: s.title || info.name, sub: info.sub });
-  Sound.setMood("volcano"); UI.hideHud(); document.body.classList.add("arcading");   // nothing from the world may cover the mini-game
+  Sound.setMood("volcano"); UI.hideHud(); document.body.classList.add("arcading"); window.__fitMode && window.__fitMode();   // nothing from the world may cover the mini-game
   await new Promise((res) => {
     const data = { questions: s.questions, seed: (G.chapterIdx + 1) * 5 + 3, ghosts: s.ghosts || 2, maxHp: G.maxHp, getScore: () => G.score, getHp: () => G.hp,
       addScore: (n) => { G.score += n; refreshHud(); }, onRight: () => gain(20), onWrong: (q) => hurt(scene, q.conceptId, true), onHit: () => { UI.flash(); hurt(scene, null, true); },
       done: () => { scene.scene.stop(key); scene.scene.resume("world"); res(); } };
     scene.scene.pause("world"); scene.scene.launch(key, data);
   });
-  document.body.classList.remove("arcading"); Sound.setMood(scene.theme.music); refreshHud();
+  document.body.classList.remove("arcading"); window.__fitMode && window.__fitMode(); Sound.setMood(scene.theme.music); refreshHud();
 }
 // ------------------------------------------------------------------ pause menu: stop, save, leave
 const SAVE_KEY = () => "arcana_at_" + (G.gameId || Track.gameId || "");
@@ -424,7 +424,7 @@ function pauseGame() {
   const box = document.createElement("div"); box.id = "pausebox";
   box.innerHTML = `<div class="pb"><div class="k">PAUSED</div><h1>${UI.esc(G.ch ? G.ch.title : "ARCANA")}</h1><p class="muted">Your progress is saved to this step of the chapter. You can come back any time.</p>
     <button class="btn primary" data-p="resume">Resume</button><button class="btn" data-p="lobby">Save and exit to lobby</button>
-    <button class="btn" data-p="music">Music: ${Sound.musicLevel()}</button><button class="btn" data-p="sound">${Sound.isMuted() ? "All sound: off" : "All sound: on"}</button><button class="btn" data-p="close">Save and close the game</button></div>`;
+    <button class="btn" data-p="music">Music: ${Sound.musicLevel()}</button><button class="btn" data-p="full">${document.fullscreenElement ? "Exit full screen" : "Full screen"}</button><button class="btn" data-p="sound">${Sound.isMuted() ? "All sound: off" : "All sound: on"}</button><button class="btn" data-p="close">Save and close the game</button></div>`;
   document.getElementById("frame").appendChild(box);
   const resume = () => { box.remove(); pausedNow = false; active.forEach((k) => g.scene.resume(k)); Sound.resume(); };
   box.onclick = (e) => {
@@ -432,6 +432,7 @@ function pauseGame() {
     if (b.dataset.p === "resume") resume();
     else if (b.dataset.p === "sound") { const m = Sound.toggle(); b.textContent = m ? "All sound: off" : "All sound: on"; }
     else if (b.dataset.p === "music") { b.textContent = "Music: " + Sound.nextMusicLevel(); }
+    else if (b.dataset.p === "full") { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.().catch(() => {}); setTimeout(() => (b.textContent = document.fullscreenElement ? "Exit full screen" : "Full screen"), 300); }
     else saveAndLeave(b.dataset.p === "close");
   };
   box.querySelector("[data-p=resume]").focus();
@@ -614,4 +615,8 @@ if (matchMedia("(pointer: coarse)").matches) {
   try { await Promise.race([loadHero(), new Promise((r) => setTimeout(r, 2500))]); } catch (e) {}   // the ranger's suit and trim
   const game = new Phaser.Game({ type: Phaser.AUTO, parent: "game", width: Math.round(W * Art.RS), height: Math.round(H * Art.RS), backgroundColor: "#000", scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [World, MazeScene, ShooterScene, SnakeScene, HillScene], render: { antialias: true, antialiasGL: !Art.LOW, powerPreference: "high-performance" }, fps: { target: 60, limit: 60, smoothStep: true }, disableContextMenu: true });
   window.__arcana = { game, G, V };
+  // fill the whole screen: on wide screens the picture covers edge to edge (a sliver of sky and under-ground is trimmed);
+  // narrower screens and the mini-games show the full picture so nothing important is ever cut
+  const fitMode = () => { const wide = innerWidth / Math.max(1, innerHeight) >= 1.5, arc = document.body.classList.contains("arcading"); const m = wide && !arc ? Phaser.Scale.ENVELOP : Phaser.Scale.FIT; if (game.scale.scaleMode !== m) { game.scale.scaleMode = m; game.scale.displaySize.setAspectMode(m); } game.scale.refresh(); };
+  window.__fitMode = fitMode; addEventListener("resize", () => setTimeout(fitMode, 60)); addEventListener("orientationchange", () => setTimeout(fitMode, 200)); setTimeout(fitMode, 50);
 })();

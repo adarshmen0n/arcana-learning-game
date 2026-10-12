@@ -7,12 +7,20 @@ const arcRng = (seed) => () => ((seed = (seed * 16807) % 2147483647) / 214748364
 const arcShuffle = (a, r = Math.random) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const hexStr = (n) => "#" + n.toString(16).padStart(6, "0");
 
+let ARC_BAKE = 0;
 class ArcadeBase extends Phaser.Scene {
+  bake(g, depth = 0) {                                       // turn a finished static drawing into one image (cheap to draw every frame on phones)
+    const key = "arcbake" + ++ARC_BAKE;
+    g.generateTexture(key, ARC.W, ARC.H); g.destroy();
+    this.events.once("shutdown", () => { if (this.textures.exists(key)) this.textures.remove(key); });
+    return this.add.image(0, 0, key).setOrigin(0).setDepth(depth);
+  }
   backdrop() {
-    const { W, H, G } = ARC, g = this.add.graphics();
+    const { W, H, G } = ARC, g = this.make.graphics({ add: false });
     g.fillStyle(0x000000, 1).fillRect(0, 0, W, H);
     g.fillGradientStyle(0x001a06, 0x001a06, 0x000000, 0x000000, 0.9).fillRect(0, 0, W, H);
     g.lineStyle(1, G, 0.07); for (let x = 0; x < W; x += 40) g.lineBetween(x, 0, x, H); for (let y = 0; y < H; y += 40) g.lineBetween(0, y, W, y);
+    this.bake(g, -1);
     this.add.particles(0, 0, "spark", { x: { min: 0, max: W }, y: { min: 0, max: H }, lifespan: 5000, speedY: { min: -14, max: -4 }, scale: { start: 0.25, end: 0 }, alpha: { start: 0.7, end: 0 }, tint: [G, 0xb6ff5a], blendMode: "ADD", frequency: Art.LOW ? 360 : 140 });
   }
   header(kicker, question) {
@@ -57,7 +65,7 @@ class MazeScene extends ArcadeBase {
     const { W, H, G } = ARC; this.backdrop(); this.header("ARCADE // MAZE RUN", ""); this.T = 40; this.CW = 9; this.CH = 7; this.COLS = 19; this.ROWS = 15; this.ox = 40; this.oy = 110;
     this.k = this.input.keyboard.addKeys("W,A,S,D,UP,DOWN,LEFT,RIGHT"); this.input.keyboard.addCapture("UP,DOWN,LEFT,RIGHT,SPACE");
     this.input.on("pointerdown", (p) => (this.sw = { x: p.x, y: p.y })); this.input.on("pointerup", (p) => { if (!this.sw) return; const dx = p.x - this.sw.x, dy = p.y - this.sw.y; if (Math.hypot(dx, dy) > 30) this.want = Math.abs(dx) > Math.abs(dy) ? [Math.sign(dx), 0] : [0, Math.sign(dy)]; this.sw = null; });
-    this.score = 0; this.round = 0; this.right = 0; this.wrong = 0; this.build(); this.walls = this.add.graphics(); this.drawWalls(); this.dotG = this.add.graphics(); this.drawDots();
+    this.score = 0; this.round = 0; this.right = 0; this.wrong = 0; this.build(); this.walls = this.make.graphics({ add: false }); this.drawWalls(); this.walls = this.bake(this.walls, 1); this.dotG = this.add.graphics(); this.drawDots();
     this.actors = this.add.graphics().setDepth(10); this.nodeG = this.add.graphics().setDepth(5); this.legend = [];
     this.panel = this.add.graphics(); this.drawPanel(); this.startRound(); this.syncScore();
   }
@@ -241,13 +249,13 @@ class SnakeScene extends ArcadeBase {
     this.k = this.input.keyboard.addKeys("W,A,S,D,UP,DOWN,LEFT,RIGHT"); this.input.keyboard.addCapture("UP,DOWN,LEFT,RIGHT,SPACE");
     this.input.on("pointerdown", (p) => (this.sw = { x: p.x, y: p.y }));
     this.input.on("pointerup", (p) => { if (!this.sw) return; const dx = p.x - this.sw.x, dy = p.y - this.sw.y; if (Math.hypot(dx, dy) > 24) this.turn(Math.abs(dx) > Math.abs(dy) ? [Math.sign(dx), 0] : [0, Math.sign(dy)]); this.sw = null; });
-    this.round = 0; this.right = 0; this.wrong = 0; this.board = this.add.graphics(); this.g = this.add.graphics().setDepth(10); this.legend = []; this.foodLabels = [];
+    this.round = 0; this.right = 0; this.wrong = 0; this.board = this.make.graphics({ add: false }); this.g = this.add.graphics().setDepth(10); this.legend = []; this.foodLabels = [];
     const x0 = this.ox + this.COLS * this.T + 26; this.lx = x0;
     this.add.graphics().fillStyle(0x03140a, 0.85).fillRoundedRect(x0, 140, 1250 - x0, 420, 10).lineStyle(2, ARC.G, 0.8).strokeRoundedRect(x0, 140, 1250 - x0, 420, 10);
     this.add.text(x0 + 16, 152, "EAT THE RIGHT ANSWER", { fontFamily: ARC.FONT, fontSize: "14px", color: "#39ff14", letterSpacing: 2 });
     this.add.text(x0 + 16, 584, "ARROWS / WASD / swipe  steer\nWrong answers shrink you.\nWalls and your tail hurt.", { fontFamily: ARC.BODY, fontSize: "17px", color: "#7fa87a", lineSpacing: 4 });
     this.hearts = this.add.text(40, 680, "", { fontFamily: ARC.FONT, fontSize: "16px", color: "#39ff14" });
-    this.drawBoard(); this.reset(); this.startRound(); this.syncScore();
+    this.drawBoard(); this.board = this.bake(this.board, 1); this.reset(); this.startRound(); this.syncScore();
   }
   drawBoard() {
     const g = this.board, T = this.T; g.clear(); g.fillStyle(0x010804, 0.9).fillRect(this.ox, this.oy, this.COLS * T, this.ROWS * T);
@@ -417,11 +425,14 @@ class HillScene extends ArcadeBase {
     c.x = Math.max(200, this.lastSafe - 250); this.gates.forEach((g) => { if (g.state === "open" && g.x < c.x + 400) c.x = g.x - 700; }); c.y = this.ty(c.x); c.vx = 0; c.vy = 0; c.ang = 0; c.ground = true;
   }
   render(time) {
-    const { W, H } = ARC, g = this.g, s = this.sky, cx = this.camX, c = this.car; g.clear(); s.clear(); this.fx.clear();
-    for (let L = 0; L < 2; L++) { const p = 0.2 + L * 0.25, col = L ? 0x062a12 : 0x041a0c; s.fillStyle(col, 1); s.beginPath(); s.moveTo(0, H); for (let x = 0; x <= W; x += 20) s.lineTo(x, 400 - L * -40 - 90 * Math.sin((x + cx * p) * (0.0032 + L * 0.0012) + L) - 40 * Math.sin((x + cx * p) * 0.009)); s.lineTo(W, H); s.closePath(); s.fillPath(); }
-    g.fillStyle(0x03140a, 1); g.beginPath(); g.moveTo(0, H); for (let x = 0; x <= W + 16; x += 16) g.lineTo(x, this.ty(x + cx)); g.lineTo(W + 16, H); g.closePath(); g.fillPath();
-    g.lineStyle(10, ARC.G, 0.12); g.beginPath(); for (let x = 0; x <= W + 16; x += 16) { const y = this.ty(x + cx); x ? g.lineTo(x, y) : g.moveTo(x, y); } g.strokePath();
-    g.lineStyle(3, ARC.G, 1); g.beginPath(); for (let x = 0; x <= W + 16; x += 16) { const y = this.ty(x + cx); x ? g.lineTo(x, y) : g.moveTo(x, y); } g.strokePath();
+    const { W, H } = ARC, g = this.g, s = this.sky, cx = this.camX, c = this.car, LOW = typeof Art !== "undefined" && Art.LOW, STEP = LOW ? 32 : 16;
+    this.fr = (this.fr || 0) + 1; g.clear(); this.fx.clear();
+    const skyNow = !LOW || this.fr % 3 === 1;                 // phones: the far mountains move slowly, so redraw them every third frame
+    if (skyNow) s.clear();
+    if (skyNow) for (let L = 0; L < 2; L++) { const p = 0.2 + L * 0.25, col = L ? 0x062a12 : 0x041a0c; s.fillStyle(col, 1); s.beginPath(); s.moveTo(0, H); for (let x = 0; x <= W; x += 20) s.lineTo(x, 400 - L * -40 - 90 * Math.sin((x + cx * p) * (0.0032 + L * 0.0012) + L) - 40 * Math.sin((x + cx * p) * 0.009)); s.lineTo(W, H); s.closePath(); s.fillPath(); }
+    g.fillStyle(0x03140a, 1); g.beginPath(); g.moveTo(0, H); for (let x = 0; x <= W + STEP; x += STEP) g.lineTo(x, this.ty(x + cx)); g.lineTo(W + STEP, H); g.closePath(); g.fillPath();
+    if (!LOW) { g.lineStyle(10, ARC.G, 0.12); g.beginPath(); for (let x = 0; x <= W + 16; x += 16) { const y = this.ty(x + cx); x ? g.lineTo(x, y) : g.moveTo(x, y); } g.strokePath(); }
+    g.lineStyle(3, ARC.G, 1); g.beginPath(); for (let x = 0; x <= W + STEP; x += STEP) { const y = this.ty(x + cx); x ? g.lineTo(x, y) : g.moveTo(x, y); } g.strokePath();
     for (let m = Math.ceil(cx / 400) * 400; m < cx + W; m += 400) { const y = this.ty(m); g.fillStyle(0x39ff14, 0.35).fillRect(m - cx - 1, y - 14, 2, 14); }
     for (const gt of this.gates) {
       const x = gt.x - cx, y = this.ty(gt.x), col = gt.state === "wrong" ? 0x552222 : gt.state === "skipped" ? 0x2a3a2a : gt.color, a = gt.state === "open" ? 1 : 0.5;
@@ -447,6 +458,6 @@ class HillScene extends ArcadeBase {
     if (c.ground && Math.abs(c.vx) > 300) { const [qx, qy] = P(-46, -2); this.fx.fillStyle(0xb6ff5a, 0.25).fillCircle(qx - 10 - Math.random() * 14, qy + 4 + Math.random() * 6, 3 + Math.random() * 4); }
     // fuel + speed HUD
     const f = Math.max(0, this.fuel) / 100; this.fuelBar.clear().fillStyle(0x000000, 0.6).fillRoundedRect(W - 260, 140, 220, 16, 6).fillStyle(f < 0.25 ? 0xff3b5c : 0xffb347, 1).fillRoundedRect(W - 258, 142, 216 * f, 12, 5);
-    this.hud.setText(`FUEL ${Math.round(f * 100)}%   SPEED ${Math.round(Math.abs(c.vx) / 6)} KM/H   CHECKPOINT ${Math.min(this.round + 1, this.d.questions.length)}/${this.d.questions.length}   HEARTS ${"◆".repeat(Math.max(0, this.d.getHp()))}`);
+    if (this.fr % 12 === 0 || !this.hudSet) this.hudSet = 1, this.hud.setText(`FUEL ${Math.round(f * 100)}%   SPEED ${Math.round(Math.abs(c.vx) / 6)} KM/H   CHECKPOINT ${Math.min(this.round + 1, this.d.questions.length)}/${this.d.questions.length}   HEARTS ${"◆".repeat(Math.max(0, this.d.getHp()))}`);
   }
 }

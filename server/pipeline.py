@@ -163,12 +163,13 @@ class Job:
             if self.script is not None:
                 self.script["chapters"] = [self.chapters[i] for i in range(self.ready())]
 
-    def public(self):
+    def public(self, full=False):
+        """full=True (the game page) also returns the chapters finished so far, so play starts before the build ends."""
         with self.lock:
             return {"id": self.id, "status": self.status, "stage": self.stage, "pct": self.pct, "message": self.message, "mode": self.mode,
                     "error": self.error, "total": self.total, "ready": self.ready(), "built": len(self.chapters), "logs": self.logs[-40:], "usage": dict(self.usage),
                     "title": (self.script or {}).get("title"),
-                    "script": self.script if self.script is not None and self.status == "done" else None}
+                    "script": self.script if self.script is not None and (self.status == "done" or (full and self.status == "running" and self.ready() > 0)) else None}
 
 
 def _keep_awake():
@@ -282,9 +283,13 @@ def _build(job: Job):
             try:
                 _ai(job, text)
             except llm.LLMError as e:                         # the free AI services stayed busy: give the student a playable game now
-                job.log("The AI services are busy (" + str(e)[:120] + "). Building a quick version so you can play now; use Rebuild later for full AI lessons.")
-                job.chapters, job.total, job.script, job.mode = {}, 0, None, "offline"
-                _offline(job, text)
+                if job.chapters and getattr(job, "plan", None):
+                    job.log("The AI services are busy (" + str(e)[:120] + "). Finishing the remaining chapters in quick mode; use Rebuild later for full AI lessons.")
+                    _fill_quick(job, text)
+                else:
+                    job.log("The AI services are busy (" + str(e)[:120] + "). Building a quick version so you can play now; use Rebuild later for full AI lessons.")
+                    job.chapters, job.total, job.script, job.mode = {}, 0, None, "offline"
+                    _offline(job, text)
                 job.script["quick"] = True
         else:
             _offline(job, text)
@@ -326,6 +331,7 @@ def _ai(job: Job, text: str):
     job.set("analyze", 12, "Analysing the material and planning chapters")
     words = len(text.split())
     parts = split_parts(text)                                     # every word of the upload belongs to exactly one part, in order
+    job.parts = parts
     target = len(parts)
     marked = "\n\n".join(f"<part {i + 1}>\n{x}\n</part {i + 1}>" for i, x in enumerate(parts))
     prompt = (f"Plan a game that teaches ALL of this material. It is {words} words long and split into {target} numbered parts. "
@@ -344,6 +350,7 @@ def _ai(job: Job, text: str):
         plan = clean_plan(llm.call_json(SYS, prompt, ANALYZE_SCHEMA, doc=doc_block(marked), max_tokens=14000, tally=tally, log=job.log))
         plan = plan_worlds(align_parts(plan, parts))
     job.check()
+    job.plan = plan
     job.total = len(plan["chapters"])
     job.script = {"schemaVersion": 2, "projectId": job.id, "title": plan["title"], "audience": {"level": plan["level"], "modes": ["student"]},
                   "summary": plan["summary"], "chapters": [], "finalBoss": final_boss(plan),
@@ -421,19 +428,27 @@ def _ai(job: Job, text: str):
                 if wait:
                     time.sleep(wait)
 
-    # the game unlocks only when every chapter is ready, so all chapters are written at the same time (spread over every AI key)
-    job.set("chapters", 30, f"Writing all {job.total} chapters at once")
+    # chapters start in order (chapter 1 first): the student plays chapter 1 while the others are still being written
+    job.set("chapters", 30, f"Writing chapter 1 first, then the other {job.total - 1}" if job.total > 1 else "Writing your chapter")
     for i in range(job.total):
         if i in done:
             job.chapters[i] = done[i]
     with cf.ThreadPoolExecutor(max_workers=max(1, min(job.total, llm.concurrency()))) as ex:
         futs = {ex.submit(build, i): i for i in range(job.total) if i not in done}
+        failed = []
         for f in cf.as_completed(futs):
             i = futs[f]
-            job.chapters[i] = f.result()
+            try:
+                job.chapters[i] = f.result()
+            except llm.LLMError as e:                                 # keep collecting the other chapters; the missing ones get a quick version
+                failed.append(e)
+                continue
             job.publish()
             job.checkpoint()
-            job.set("chapters", 30 + int(65 * len(job.chapters) / job.total), f"Chapter {i + 1} ready ({len(job.chapters)} of {job.total})")
+            job.set("chapters", 30 + int(65 * len(job.chapters) / job.total), f"Chapter {i + 1} ready ({len(job.chapters)} of {job.total})"
+                    + (". You can start playing now" if i == 0 and job.total > 1 else ""))
+        if failed:
+            raise failed[0]
     job.set("finish", 96, "Assembling your game")
 
 
@@ -706,6 +721,25 @@ def ground(job, gen, index, i):
 
 
 # ----------------------------------------------------------------------------- offline path
+def _fill_quick(job: Job, text: str):
+    """Write the chapters the AI could not finish with the offline builder, keeping the AI chapters (and their order) as they are."""
+    plan, parts = job.plan, getattr(job, "parts", None) or split_parts(text)
+    whole = None
+    for i in range(job.total):
+        if i in job.chapters:
+            continue
+        try:
+            gen = mockgen.build(parts[i] if i < len(parts) else text, job.filename)[1][0]
+        except ValueError:                                         # this part alone is too short for the offline builder: use the whole text
+            whole = whole or mockgen.build(text, job.filename)[1]
+            gen = whole[i % len(whole)]
+        ch = plan["chapters"][i]
+        cons = [c for c in plan["concepts"] if c["id"] in ch["concept_ids"]]
+        job.chapters[i] = assemble_chapter(i, job.total, ch, cons, dict(gen), plan.get("level", "general"))
+        job.publish()
+        job.set("chapters", 30 + int(65 * len(job.chapters) / job.total), f"Chapter {i + 1} ready (quick mode)")
+
+
 def _offline(job: Job, text: str):
     job.set("analyze", 20, "Analysing the text (offline mode)")
     plan, gens = mockgen.build(text, job.filename)

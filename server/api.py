@@ -519,7 +519,7 @@ def job_get(r, jid):
     job = pipeline.JOBS.get(jid)
     if not job or job.opts.get("owner") != u["id"]:
         raise Err(404, "Unknown job.")
-    return job.public()
+    return job.public(full=(r.query.get("script") or [""])[0] == "1")
 
 
 # ----------------------------------------------------------------------------- learning loop

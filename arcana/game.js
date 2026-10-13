@@ -534,21 +534,30 @@ async function ending() {
 
 // ---- uploaded games: chapters arrive while the player is already playing ----
 async function syncLive() {
-  const j = await UI.api("/api/jobs/" + LIVE);
-  if (j.status === "error") { await UI.card(`<div class="kicker">Generation stopped</div><h1>Could not finish the game</h1><p>${UI.esc(j.error || "Unknown error")}</p>`, "Back to menu"); location.reload(); await new Promise(() => {}); }
-  if (j.script) j.script.chapters.forEach((c, n) => (SCRIPT.chapters[n] = c));
+  let j;
+  try { j = await UI.api("/api/jobs/" + LIVE + "?script=1"); syncLive.miss = 0; }
+  catch (e) {                                                          // the server is restarting: the build carries on there, so keep waiting
+    try { const s = await UI.api("/api/scripts/" + encodeURIComponent(LIVE)); s.chapters.forEach((c, n) => (SCRIPT.chapters[n] = c)); SCRIPT.finalBoss = s.finalBoss; return { status: "done", pct: 100, message: "Ready" }; } catch (e2) {}
+    if (++syncLive.miss > 300) j = { status: "error", error: "Lost contact with the game builder. Your progress is saved; open the game again from the dashboard." };
+    else return { status: "running", pct: syncLive.pct || 0, message: "Reconnecting to the server. Your next chapter keeps building..." };
+  }
+  if (j.status === "error" || j.status === "cancelled") { await UI.card(`<div class="kicker">Generation stopped</div><h1>Could not finish the game</h1><p>${UI.esc(j.error || "Unknown error")}</p>`, "Back to menu"); location.href = "/"; await new Promise(() => {}); }
+  if (j.script) { j.script.chapters.forEach((c, n) => (SCRIPT.chapters[n] = c)); if (j.script.finalBoss) SCRIPT.finalBoss = j.script.finalBoss; }
+  syncLive.pct = j.pct;
   return j;
 }
+syncLive.miss = 0;
+const waitMsg = (j) => (j.total && j.built != null && !/reconnect/i.test(j.message || "") ? `${j.built} of ${j.total} chapters built` : j.message || "");
 async function waitFor(ready, label) {
   if (!LIVE) return;
   let j = await syncLive();
   if (ready(j)) return;
-  UI.show(`<div class="kicker">Please wait</div><h1>${UI.esc(label)}</h1><div class="pbar"><i id="wf" style="width:${j.pct}%"></i></div><p class="muted" id="wm">${UI.esc(j.message)}</p>`, "modal");
-  while (!ready(j)) { await UI.sleep(1200); j = await syncLive(); const f = document.getElementById("wf"); if (f) f.style.width = j.pct + "%"; const m = document.getElementById("wm"); if (m) m.textContent = j.message; }
+  UI.show(`<div class="kicker">Almost there</div><h1>${UI.esc(label)}</h1><p class="muted">It starts by itself the moment it is ready.</p><div class="pbar"><i id="wf" style="width:${j.pct}%"></i></div><p class="muted" id="wm">${UI.esc(waitMsg(j))}</p>`, "modal");
+  while (!ready(j)) { await UI.sleep(1200); j = await syncLive(); const f = document.getElementById("wf"); if (f) f.style.width = j.pct + "%"; const m = document.getElementById("wm"); if (m) m.textContent = waitMsg(j); }
   UI.hide(); await UI.sleep(250);
 }
-const ensureChapter = async (i) => { if (!SCRIPT.chapters[i]) await waitFor((j) => !!SCRIPT.chapters[i], `Forging chapter ${i + 1}...`); return SCRIPT.chapters[i]; };
-const ensureDone = () => waitFor((j) => j.status === "done", "Preparing the final boss...");
+const ensureChapter = async (i) => { if (!SCRIPT.chapters[i]) await waitFor((j) => !!SCRIPT.chapters[i], `Chapter ${i + 1} is still being written`); return SCRIPT.chapters[i]; };
+const ensureDone = () => waitFor((j) => j.status === "done", "Dr Doom is getting ready");
 
 async function main(scene) {
   scene.startTitle();
@@ -558,7 +567,12 @@ async function main(scene) {
   G.name = me.username; G.gender = me.gender; G.gameId = gid; scene.previewHero(G.gender);
   let resume = null;
   try {
-    if (jid) { const j = await UI.api("/api/jobs/" + jid); if (!j.script) throw new Error("This game is not ready yet."); SCRIPT = j.script; SCRIPT.chapters = SCRIPT.chapters.slice(); LIVE = j.status === "done" ? null : jid; }
+    if (jid) {
+      let j = null;
+      try { j = await UI.api("/api/jobs/" + jid + "?script=1"); } catch (e) {}
+      if (j && j.script) { SCRIPT = JSON.parse(JSON.stringify(j.script)); LIVE = j.status === "done" ? null : jid; }
+      else SCRIPT = await UI.api("/api/scripts/" + encodeURIComponent(jid));   // already finished (and saved) since the link was made
+    }
     else SCRIPT = await UI.api("/api/scripts/" + encodeURIComponent(gid));
     resume = (await UI.api("/api/progress?game=" + encodeURIComponent(gid))).progress;
   } catch (e) { await UI.card(`<div class="kicker">Cannot open</div><h1>Game unavailable</h1><p>${UI.esc(e.message)}</p>`, "Back to dashboard"); location.href = "/"; return; }
@@ -573,7 +587,7 @@ async function main(scene) {
     onClose: () => { scene.input.keyboard.enabled = true; scene.input.keyboard.enableGlobalCapture(); } });
   UI.hideTitle(); scene.setHero(G.gender); UI.setPlayer(me.username, G.gender); Track.start(gid);
   let total = SCRIPT.chapters.length;
-  if (LIVE) { const j = await UI.api("/api/jobs/" + LIVE); total = j.total || total; if (j.status === "done") LIVE = null; }
+  if (LIVE) { const j = await syncLive(); total = j.total || total; if (j.status === "done") LIVE = null; }
   const c0 = +qp.get("ch") || (resume ? Math.min(resume.chapter, total) : 0);   // dev shortcuts: ?ch=1&at=7
   if (window.Arc) for (const ch of SCRIPT.chapters.slice(0, c0)) for (const s of ch.scenes) {   // notes from chapters already played
     if (s.type === "npc") Arc.addNote({ kind: "lesson", from: s.npc.name, role: s.role, lines: s.dialogue.map((l) => l.text), keyIdea: s.keyIdea });

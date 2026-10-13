@@ -505,7 +505,7 @@ function watchJob(id) {
       const early = j.status === "running" && j.ready > 0;               // chapter 1 is ready: play now, the rest keep building meanwhile
       if (early && !$("#playnow")) { $("#pb").innerHTML = `<a class="gbtn hero" id="playnow" href="/play.html?job=${encodeURIComponent(id)}"><span>&#9654; Play chapter 1 now</span></a><p class="muted small" id="pbt"></p>`; toast("Chapter 1 is ready. Start playing while the rest are built!"); }
       if (!early) $("#pb").innerHTML = `<p class="muted small" id="pbt"></p>`;
-      $("#pbt").textContent = early ? `${j.built ?? j.ready} of ${j.total} chapters built. The rest keep building while you play.` : `${j.built ?? j.ready} of ${j.total} chapters built. You can start playing as soon as chapter 1 is ready.`;
+      $("#pbt").textContent = early ? `${j.built ?? j.ready} of ${j.total} chapters built. The rest keep building while you play.` : `Chapter 1 is being written first. You can start playing the moment it is ready.`;
     }
     if (j.status === "done") { forget(); toast(j.mode === "offline" ? "Game ready in quick mode (the AI was busy). Press Rebuild in Quests later for full AI lessons." : "Game ready: " + (j.title || "")); await refresh(); return; }
     if (j.status === "cancelled") { forget(); if ($("#msg")) $("#msg").innerHTML = '<div class="muted small">Cancelled.</div>'; if ($("#go")) $("#go").disabled = false; return; }

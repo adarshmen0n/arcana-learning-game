@@ -282,6 +282,8 @@ def _build(job: Job):
         elif job.mode == "ai":
             try:
                 _ai(job, text)
+                if getattr(job, "mixed", False):
+                    job.script["quick"] = True
             except llm.LLMError as e:                         # the free AI services stayed busy: give the student a playable game now
                 if job.chapters and getattr(job, "plan", None):
                     job.log("The AI services are busy (" + str(e)[:120] + "). Finishing the remaining chapters in quick mode; use Rebuild later for full AI lessons.")
@@ -410,15 +412,15 @@ def _ai(job: Job, text: str):
 
     build_patience = getattr(llm._patience, "s", 0)
 
-    def build(i):
+    def build(i, tries=6):
         llm.patience(build_patience)
-        for attempt in range(1, 7):
+        for attempt in range(1, tries + 1):
             job.check()
             try:
                 return gen_chapter(job, plan, i, doc_for(i), index, parts[i])
             except llm.LLMError as e:
                 msg = str(e)
-                if attempt == 6 or "rejected" in msg or "declined" in msg:
+                if attempt == tries or "rejected" in msg or "declined" in msg:
                     raise
                 m = re.search(r"in about (\d+) seconds", msg)
                 wait = min(int(m.group(1)) + 2, 150) if m else 0
@@ -428,25 +430,43 @@ def _ai(job: Job, text: str):
                 if wait:
                     time.sleep(wait)
 
-    # chapters start in order (chapter 1 first): the student plays chapter 1 while the others are still being written
-    job.set("chapters", 30, f"Writing chapter 1 first, then the other {job.total - 1}" if job.total > 1 else "Writing your chapter")
     for i in range(job.total):
         if i in done:
             job.chapters[i] = done[i]
-    with cf.ThreadPoolExecutor(max_workers=max(1, min(job.total, llm.concurrency()))) as ex:
-        futs = {ex.submit(build, i): i for i in range(job.total) if i not in done}
+
+    def finished(i, ch):
+        job.chapters[i] = ch
+        job.publish()
+        job.checkpoint()
+        job.set("chapters", 30 + int(65 * len(job.chapters) / job.total), f"Chapter {i + 1} ready ({len(job.chapters)} of {job.total})"
+                + (". You can start playing now" if i == 0 and job.total > 1 else ""))
+
+    # chapter 1 alone first, with every AI key on it, so the student can start playing as early as possible
+    if 0 not in job.chapters:
+        job.set("chapters", 30, "Writing chapter 1 first so you can start playing sooner")
+        try:
+            ch0 = build(0, tries=3)
+        except llm.LLMError as e:                                     # the AI is too busy right now: chapter 1 in quick mode, the rest still by AI
+            if "rejected" in str(e) or "declined" in str(e):
+                raise
+            job.log("The AI is busy (" + str(e)[:100] + "). Chapter 1 is made in quick mode so you can start now; the others are still written by AI.")
+            ch0 = _quick_chapter(job, text, 0)
+            job.mixed = True
+        finished(0, ch0)
+    rest = [i for i in range(job.total) if i not in job.chapters]
+    if rest:
+        job.set("chapters", job.pct, f"Writing the other {len(rest)} chapter{'s' if len(rest) > 1 else ''} while you play")
+    with cf.ThreadPoolExecutor(max_workers=max(1, min(len(rest) or 1, llm.concurrency()))) as ex:
+        futs = {ex.submit(build, i): i for i in rest}
         failed = []
         for f in cf.as_completed(futs):
             i = futs[f]
             try:
-                job.chapters[i] = f.result()
+                ch = f.result()
             except llm.LLMError as e:                                 # keep collecting the other chapters; the missing ones get a quick version
                 failed.append(e)
                 continue
-            job.publish()
-            job.checkpoint()
-            job.set("chapters", 30 + int(65 * len(job.chapters) / job.total), f"Chapter {i + 1} ready ({len(job.chapters)} of {job.total})"
-                    + (". You can start playing now" if i == 0 and job.total > 1 else ""))
+            finished(i, ch)
         if failed:
             raise failed[0]
     job.set("finish", 96, "Assembling your game")
@@ -721,21 +741,25 @@ def ground(job, gen, index, i):
 
 
 # ----------------------------------------------------------------------------- offline path
+def _quick_chapter(job: Job, text: str, i: int):
+    """One chapter from the offline builder, slotted into the AI plan (same title, world, concepts and place in the game)."""
+    plan, parts = job.plan, getattr(job, "parts", None) or split_parts(text)
+    try:
+        gen = mockgen.build(parts[i] if i < len(parts) else text, job.filename)[1][0]
+    except ValueError:                                             # this part alone is too short for the offline builder: use the whole text
+        whole = mockgen.build(text, job.filename)[1]
+        gen = whole[i % len(whole)]
+    ch = plan["chapters"][i]
+    cons = [c for c in plan["concepts"] if c["id"] in ch["concept_ids"]]
+    return assemble_chapter(i, job.total, ch, cons, dict(gen), plan.get("level", "general"))
+
+
 def _fill_quick(job: Job, text: str):
     """Write the chapters the AI could not finish with the offline builder, keeping the AI chapters (and their order) as they are."""
-    plan, parts = job.plan, getattr(job, "parts", None) or split_parts(text)
-    whole = None
     for i in range(job.total):
         if i in job.chapters:
             continue
-        try:
-            gen = mockgen.build(parts[i] if i < len(parts) else text, job.filename)[1][0]
-        except ValueError:                                         # this part alone is too short for the offline builder: use the whole text
-            whole = whole or mockgen.build(text, job.filename)[1]
-            gen = whole[i % len(whole)]
-        ch = plan["chapters"][i]
-        cons = [c for c in plan["concepts"] if c["id"] in ch["concept_ids"]]
-        job.chapters[i] = assemble_chapter(i, job.total, ch, cons, dict(gen), plan.get("level", "general"))
+        job.chapters[i] = _quick_chapter(job, text, i)
         job.publish()
         job.set("chapters", 30 + int(65 * len(job.chapters) / job.total), f"Chapter {i + 1} ready (quick mode)")
 

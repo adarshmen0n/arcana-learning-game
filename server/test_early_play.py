@@ -105,6 +105,24 @@ ok([c.get("madeBy") for c in chs] == ["ai", "ai", None, None], "chapters already
 ok(job3.script.get("quick") and not db.q("SELECT 1 FROM script_cache WHERE game_id=?", (job3.id,), one=True), "the mixed game is marked quick (Rebuild offered later) and not shared as a finished AI game")
 ok(all(c["scenes"] for c in chs) and not pipeline.check_script(job3.script), "the quick chapters are complete and the game passes validation")
 
+# 2b. the AI is busy for chapter 1 only (the case seen on a phone: chapters 2 and 3 done, chapter 1 still waiting): chapter 1 comes
+#     in quick mode right away and the rest are still written by AI
+behaviour.clear()
+behaviour.update({0: (0.1, True), 1: (0.3, False), 2: (0.3, False), 3: (0.3, False)})
+order = []
+real_fake = pipeline.gen_chapter
+pipeline.gen_chapter = lambda job, plan, i, *a, **k: (order.append(i), real_fake(job, plan, i, *a, **k))[1]
+job5 = pipeline.Job("plants5.txt", text=TEXT + " fifth.", opts={"fresh": True, "owner": U1})
+job5.mode = "ai"
+pipeline.JOBS[job5.id] = job5
+pipeline.time.sleep = lambda s: real_sleep(min(s, 0.01))
+pipeline._run(job5)
+pipeline.time.sleep = real_sleep
+pipeline.gen_chapter = real_fake
+chs = job5.script["chapters"]
+ok(order[:3] == [0, 0, 0] and set(order[3:]) == {1, 2, 3}, "chapter 1 is written on its own before any other chapter starts")
+ok(job5.status == "done" and [c.get("madeBy") for c in chs] == [None, "ai", "ai", "ai"] and job5.script.get("quick"), "a busy AI on chapter 1 gives a quick chapter 1 at once; chapters 2-4 are still AI-written")
+
 # 3. a job that never got a chapter shows no chapters to the game page
 behaviour.clear()
 behaviour.update({i: (1.0, False) for i in range(N)})

@@ -276,7 +276,7 @@ TRANSCRIBE_PROMPT = ("Transcribe all the study content in this file as clean tex
 # name: (base url, env var for key(s), model env var, preferred model keywords, max document chars, output cap, vision, json mode)
 COMPAT = {
     "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", ("GEMINI_API_KEY", "GOOGLE_API_KEY"), "GEMINI_MODEL",
-               ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"], 400_000, 16000, True, True),   # Flash first (best); the Lite models have their own, separate free allowance per key
+               ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-latest"], 400_000, 16000, True, True),   # Lite first: about 10x faster than Flash and far less often overloaded; each model has its own free allowance per key
     "mistral": ("https://api.mistral.ai/v1", ("MISTRAL_API_KEY",), "MISTRAL_MODEL", ["mistral-small", "mistral-medium", "mistral-large", "mistral"], 100_000, 8000, False, True),
     "deepseek": ("https://api.deepseek.com/v1", ("DEEPSEEK_API_KEY",), "DEEPSEEK_MODEL", ["deepseek-chat"], 120_000, 8000, False, True),
     "openai": ("https://api.openai.com/v1", ("OPENAI_API_KEY",), "OPENAI_MODEL", ["gpt-4o-mini", "gpt-4.1-mini", "mini"], 200_000, 16000, True, True),
@@ -337,7 +337,7 @@ class CompatProvider(Provider):
         except Exception:
             ids = []
         skip = ("embed", "whisper", "tts", "guard", "safety", "moderation", "image", "vision-preview", "audio", "orpheus", "rerank", "imagen", "veo", "aqa", "customtools", "live", "omni", "lite", "nano", "thinkingmachines")
-        if self.name == "gemini":
+        if self.name.startswith("gemini"):
             skip = tuple(x for x in skip if x != "lite")             # the lite models are a good fallback when the main one is busy
         ids = [i for i in ids if i and i not in self.bad and not any(s in i.lower() for s in skip)]
         if self.name.startswith("openrouter"):
@@ -468,7 +468,7 @@ class CompatProvider(Provider):
         last = "malformed JSON"
         for attempt in range(2):
             body = {"model": model, "messages": msgs, "temperature": 0.4, "max_tokens": min(max_tokens, self.out_cap)}
-            if self.name == "gemini" and not getattr(self, "no_reason", False):
+            if self.name.startswith("gemini") and not getattr(self, "no_reason", False):
                 body["reasoning_effort"] = "low"          # newer Gemini models think first; keep that short so the answer is not cut off
             if self.name.startswith("openrouter"):
                 body["reasoning"] = {"effort": "low", "exclude": True}
@@ -495,7 +495,7 @@ class CompatProvider(Provider):
 
     def chat(self, system, messages, max_tokens, tally):
         body = {"model": self.resolve_model(), "messages": [{"role": "system", "content": system}] + messages, "temperature": 0.5, "max_tokens": min(max_tokens, self.out_cap)}
-        if self.name == "gemini" and not getattr(self, "no_reason", False):
+        if self.name.startswith("gemini") and not getattr(self, "no_reason", False):
             body["reasoning_effort"] = "low"
         if self.name.startswith("openrouter"):
             body["reasoning"] = {"effort": "low", "exclude": True}
